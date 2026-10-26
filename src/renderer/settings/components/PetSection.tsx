@@ -1,7 +1,6 @@
 import { Dropdown, Option } from '@fluentui/react-components';
 import { Emoji24Regular } from '@fluentui/react-icons';
 import { Fragment } from 'react';
-import { featureOn } from '../../../shared/features';
 import { PET_IDS, PET_RESTS, type PetId, type PetSetting } from '../../../shared/teammate/pet';
 import { useText } from '../text';
 import type { Update } from '../useAppState';
@@ -17,7 +16,7 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
 
   return (
     <>
-      <p className="desc roomNote">{featureOn(s, 'teammate') ? m.petDesc : `${m.petDesc} ${m.petNeedsTeammate}`}</p>
+      <p className="desc roomNote">{m.petDesc}</p>
       {PET_IDS.map((id) => {
         const pet = mate.pets[id];
         const setPet = (p: Partial<PetSetting>) =>
