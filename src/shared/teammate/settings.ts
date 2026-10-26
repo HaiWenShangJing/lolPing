@@ -5,6 +5,7 @@ import { sanitizeName } from '../roomProtocol';
 import type { EmoteTriggerKey, NamedTrigger, TriggerKey } from '../settings';
 import { AGENT_PRESET_IDS, type AgentPresetId } from './agents';
 import { agentAllowed, allowed, parsePermissionKey } from './doRules';
+import { DEFAULT_PETS, normalizePets, type PetsSetting } from './pet';
 import { PROVIDER_IDS, type ProviderId } from './providers';
 
 /** The ask key: a trigger key of its own, or the ping key ('same'). */
@@ -77,6 +78,8 @@ export interface TeammateSettings {
   context: { marks: boolean; systemText: boolean; files: boolean; webPdfs: boolean; clipboardForForms: boolean };
   emotes: boolean;
   receiptSound: boolean;
+  /** Desktop pets that run to the teammate's ping: each character on or off, and the animation it rests in. */
+  pets: PetsSetting;
   /** keepDays null keeps threads until the thread cap removes them. */
   history: { on: boolean; keepDays: number | null; maxThreads: number; paused: boolean };
   permissions: string[];
@@ -103,6 +106,7 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   context: { marks: true, systemText: true, files: true, webPdfs: false, clipboardForForms: false },
   emotes: true,
   receiptSound: true,
+  pets: DEFAULT_PETS,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
   firstRunDone: false,
@@ -310,6 +314,7 @@ export function normalizeTeammate(
     context: context(r.context),
     emotes: bool(r.emotes, DEFAULT_TEAMMATE.emotes),
     receiptSound: bool(r.receiptSound, DEFAULT_TEAMMATE.receiptSound),
+    pets: normalizePets(r.pets),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),
     firstRunDone: bool(r.firstRunDone, DEFAULT_TEAMMATE.firstRunDone),

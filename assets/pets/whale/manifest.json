@@ -1,0 +1,91 @@
+{
+  "id": "whale",
+  "width": 160,
+  "height": 160,
+  "anims": {
+    "idle": {
+      "frames": [
+        "idle_00.png"
+      ],
+      "fps": 8
+    },
+    "happy": {
+      "frames": [
+        "dance_00.png",
+        "dance_01.png",
+        "dance_02.png",
+        "dance_03.png",
+        "dance_04.png",
+        "dance_05.png",
+        "dance_06.png",
+        "dance_07.png"
+      ],
+      "fps": 8
+    },
+    "walk": {
+      "frames": [
+        "walk_00.png",
+        "walk_01.png",
+        "walk_02.png",
+        "walk_03.png",
+        "walk_04.png",
+        "walk_05.png",
+        "walk_06.png",
+        "walk_07.png"
+      ],
+      "fps": 8
+    },
+    "flying": {
+      "frames": [
+        "flying_00.png",
+        "flying_01.png",
+        "flying_02.png",
+        "flying_03.png",
+        "flying_04.png",
+        "flying_05.png",
+        "flying_06.png",
+        "flying_07.png"
+      ],
+      "fps": 8
+    },
+    "think": {
+      "frames": [
+        "held_00.png",
+        "held_01.png",
+        "held_02.png",
+        "held_03.png",
+        "held_04.png",
+        "held_05.png",
+        "held_06.png",
+        "held_07.png"
+      ],
+      "fps": 8
+    },
+    "held": {
+      "frames": [
+        "held_00.png",
+        "held_01.png",
+        "held_02.png",
+        "held_03.png",
+        "held_04.png",
+        "held_05.png",
+        "held_06.png",
+        "held_07.png"
+      ],
+      "fps": 8
+    },
+    "dance": {
+      "frames": [
+        "dance_00.png",
+        "dance_01.png",
+        "dance_02.png",
+        "dance_03.png",
+        "dance_04.png",
+        "dance_05.png",
+        "dance_06.png",
+        "dance_07.png"
+      ],
+      "fps": 8
+    }
+  }
+}

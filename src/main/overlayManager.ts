@@ -316,6 +316,12 @@ export class OverlayManager extends EventEmitter {
     return p ? { x: p.x, y: p.y } : null;
   }
 
+  /** A point in the overlay of display displayId (CSS px) as a screen point in DIPs. */
+  localToDip(displayId: number, x: number, y: number): { x: number; y: number } | null {
+    const d = this.maps.find((m) => m.id === displayId);
+    return d ? { x: d.dip.x + x, y: d.dip.y + y } : null;
+  }
+
   /** The middle of the main display in DIPs: where the teammate's windows go when no display is under a spot. */
   primaryDip(): { x: number; y: number } {
     const b = screen.getPrimaryDisplay().bounds;

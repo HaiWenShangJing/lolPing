@@ -3,7 +3,7 @@ import {
   ArrowMove24Regular, ArrowSync24Regular, CursorClick24Regular, DataPie24Regular, Games24Regular, Info24Regular, Keyboard24Regular, MusicNote224Regular, Pin24Regular,
   Power24Regular, ResizeLarge24Regular, Rocket24Regular, Settings24Regular, Speaker224Regular, SpeakerMute24Regular,
   Apps24Regular, Timer24Regular, Cursor24Regular, Emoji24Regular, LocalLanguage24Regular, PeopleCommunity24Regular,
-  Sparkle24Regular,
+  Sparkle24Regular, Bot24Regular,
 } from '@fluentui/react-icons';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { LANGUAGE_NAMES, LANGUAGE_PREFS, resolveLang, strings, type LanguagePref, type Strings } from '../../shared/i18n';
@@ -19,6 +19,7 @@ import { EmoteSection } from './components/EmoteSection';
 import { FeaturesSection } from './components/FeaturesSection';
 import { KeyCapture } from './components/KeyCapture';
 import { PermissionCard } from './components/PermissionCard';
+import { PetSection } from './components/PetSection';
 import { RoomSection } from './components/RoomSection';
 import { SettingRow, SliderRow, SwitchRow } from './components/rows';
 import { StatusCard } from './components/StatusCard';
@@ -46,6 +47,7 @@ const SECTIONS: { id: string; label: (t: Strings) => string; icon: ReactNode; fe
   { id: 'teammate', label: (t) => t.navTeammate, icon: <Sparkle24Regular />, feature: 'teammate' },
   { id: 'features', label: (t) => t.navFeatures, icon: <Apps24Regular /> },
   { id: 'app', label: (t) => t.navApp, icon: <Settings24Regular /> },
+  { id: 'pet', label: (t) => t.navPet, icon: <Bot24Regular /> },
 ];
 
 /** The nav selection bar's height; it sits centred on the item. */
@@ -303,6 +305,9 @@ function SettingsPage({ settings: s, status, update }: { settings: Settings; sta
             checked={s.autoUpdateCheck} onChange={(v) => void update({ autoUpdateCheck: v })} />
         ) : null}
         <AboutSection icon={<Info24Regular />} update={updateState} />
+
+        <div className="section" id="pet">{t.navPet}</div>
+        <PetSection settings={s} update={update} />
       </main>
     </div>
   );

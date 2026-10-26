@@ -52,10 +52,14 @@ async function fetchUncached(file: string): Promise<Response> {
   return new Response(res.body, { status: res.status, headers });
 }
 
-/** Host `emotes` from `emoteDirs()`; host `app` from `rendererRoot` when set (production); anything else is not found. */
-export function serveAppScheme(opts: { rendererRoot: string | null; emoteDirs: () => readonly string[] }): void {
+/** Host `emotes` from `emoteDirs()`; host `pets` from `petsDir`; host `app` from `rendererRoot` when set (production); anything else is not found. */
+export function serveAppScheme(opts: { rendererRoot: string | null; emoteDirs: () => readonly string[]; petsDir: string }): void {
   protocol.handle(APP_SCHEME, (request) => {
     const url = new URL(request.url);
+    if (url.host === 'pets') {
+      const file = resolveInside(opts.petsDir, url.pathname);
+      return file && isFile(file, false) ? fetchUncached(file) : notFound();
+    }
     if (url.host === 'emotes') {
       const file = resolveEmoteFile(opts.emoteDirs(), url.pathname);
       return file ? fetchUncached(file) : notFound();

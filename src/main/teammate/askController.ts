@@ -40,6 +40,7 @@ import type { Doc } from './files';
 import { FILE_READ_LIMIT, gather, readFileTool, type GatherDeps, type Gathered, type UsedItem } from './gather';
 import type { HistoryStore } from './historyStore';
 import type { MateWindows } from './mateWindows';
+import type { PetWindows } from './petWindows';
 import { agentAsk, aimsExactly, canLook, firstTurn, systemPrompt, type AskContext } from './prompt';
 import {
   ProviderError, type Part, type ProviderAdapter, type RawCall, type StreamHandlers, type Turn,
@@ -67,6 +68,8 @@ export interface AskDeps {
   windows: Pick<MateWindows,
     'showBubble' | 'updateBubble' | 'hideBubble' | 'hideNow' | 'showCard' | 'updateCard' | 'hideCard' | 'placeOf'
     | 'setCaptureExcluded'>;
+  /** The desktop pet, when there is one: it runs to the ask's ping, thinks while the answer comes and is happy after. */
+  pet?: Pick<PetWindows, 'goTo' | 'cheer' | 'release' | 'setCaptureExcluded'>;
   history: Pick<HistoryStore, 'append' | 'current' | 'amend'>;
   /** The folder each ask's own capture folder goes in. */
   tempDir: () => string;
@@ -476,6 +479,8 @@ export class AskController extends EventEmitter {
     this.shown = run;
     this.nextPingAt = 0;
     this.bubbleEndsAt = 0;
+    const petAt = this.deps.overlay.toDip(run.receipt);
+    if (petAt) this.deps.pet?.goTo(petAt);
     this.emit('state', true);
     if (this.cardShown) this.deps.windows.updateCard(this.cardState(run, true));
     this.go(run).catch((err: unknown) => console.warn('[teammate] ask failed:', err));
@@ -609,6 +614,7 @@ export class AskController extends EventEmitter {
   cancel(_reason: 'new' | 'pause' | 'helper' | 'user'): void {
     this.stopRun();
     this.deps.actions?.cancel();
+    this.deps.pet?.release();
     // Unconditionally: whatever the flags say, nothing of the teammate may stay on screen after a pause.
     this.marksShown = true;
     this.clearMarks();
@@ -1096,7 +1102,7 @@ export class AskController extends EventEmitter {
   }
 
   private exclude(on: boolean): void {
-    for (const target of [this.deps.overlay, this.deps.windows]) {
+    for (const target of [this.deps.overlay, this.deps.windows, ...(this.deps.pet ? [this.deps.pet] : [])]) {
       try {
         target.setCaptureExcluded(on);
       } catch (err) {
@@ -1344,6 +1350,7 @@ export class AskController extends EventEmitter {
     }
     run.machine.done();
     this.stopRun();
+    this.deps.pet?.cheer();
     // A line whose time ran out while the answer was still coming gets its time again from now.
     if (this.bubbleShown && this.bubbleTimer === null) this.armBubble(run, run.line);
     if (run.autoCard && !this.cardShown) this.openCard(run);
@@ -1408,6 +1415,7 @@ export class AskController extends EventEmitter {
     run.machine.fail(reason);
     this.stopRun();
     this.clearMarks();
+    this.deps.pet?.release();
     const at = run.stale ? null : this.deps.overlay.toLocal(run.receipt);
     if (at) {
       this.deps.overlay.spawnMate({ ...at, id: 'missing', keep: true, tag: run.tag });
@@ -1523,6 +1531,7 @@ export class AskController extends EventEmitter {
     this.fadeTimer = this.timer(Math.max(0, at - now), () => {
       this.fadeTimer = null;
       this.answeredAt = null;
+      this.deps.pet?.release();
       if (!this.marksShown) return;
       this.deps.overlay.fadeMate();
       this.marksShown = false;

@@ -3,7 +3,7 @@ import {
 } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes, randomInt } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
@@ -65,6 +65,8 @@ import { installedEditors } from './teammate/editors';
 import { fetchWebPdf, pdfAssetDirs, readDocument, readPdfBuffer } from './teammate/files';
 import { HistoryStore } from './teammate/historyStore';
 import { MateWindows, overShownWindow } from './teammate/mateWindows';
+import { PetWindows } from './teammate/petWindows';
+import { DEFAULT_PETS } from '../shared/teammate/pet';
 import { createAdapter } from './teammate/providers';
 import { SecretStore } from './teammate/secrets';
 import { StaleWatcher } from './teammate/staleWatcher';
@@ -208,6 +210,7 @@ function start(): void {
   serveAppScheme({
     rendererRoot: process.env.ELECTRON_RENDERER_URL ? null : join(__dirname, '../renderer'), // development pages come from Vite
     emoteDirs: () => [library.dir, cache.dir], // the library wins; the cache only fills the gaps
+    petsDir: join(settingsDir(), 'pets'),
   });
   if (IS_MAC) {
     app.dock?.hide(); // a menu bar app: the Dock icon only shows while settings are open
@@ -226,6 +229,14 @@ function start(): void {
   let textOpen = false;
   let wordsOpen = false; // the teammate's words box has the keyboard: the helper stays suspended, as for the text box
   let mate: Mate | null = null; // the teammate, while its feature is on
+  const petsDir = join(settingsDir(), 'pets');
+  const bundledPets = app.isPackaged ? join(process.resourcesPath, 'pets') : join(app.getAppPath(), 'assets', 'pets');
+  try {
+    for (const id of readdirSync(bundledPets)) {
+      if (!existsSync(join(petsDir, id, 'manifest.json'))) cpSync(join(bundledPets, id), join(petsDir, id), { recursive: true });
+    }
+  } catch { /* no bundled pets; the user folder may still have them */ }
+  const pets = new PetWindows(petsDir);
   let mateFailed = false; // it couldn't start: its ask key stays off for this session
   /** The settings as the helper and overlays use them: without the teammate once it failed to start. */
   const effective = (s: Settings): Settings => (mateFailed ? { ...s, features: { ...s.features, teammate: false } } : s);
@@ -449,6 +460,8 @@ function start(): void {
   overlays.on('displays', pushRoom);
   room.on('remotePing', (p) => overlays.spawnRemote(p));
   overlays.on('shared', (p: SharedPing) => {
+    const dip = overlays.localToDip(p.displayId, p.x, p.y);
+    if (dip) pets.visit(dip);
     const shared = toShared(overlays.numbered(), p.displayId, p.x, p.y);
     if (shared) room.sendPing(p.id, shared);
   });
@@ -947,6 +960,7 @@ function start(): void {
       adapter: (p, key) => createAdapter(p, key),
       overlay: overlays,
       windows,
+      pet: pets,
       history,
       tempDir: () => tempDir,
       thumbnail,
@@ -1021,6 +1035,7 @@ function start(): void {
   let mateStopping: Promise<unknown> | null = null;
   const syncMate = (): void => {
     const on = !IS_LINUX && featureOn(settings, 'teammate');
+    pets.sync(IS_LINUX ? DEFAULT_PETS : settings.teammate.pets);
     if (on && !mate && !mateFailed) {
       if (mateStopping) {
         void mateStopping.then(syncMate);
@@ -1248,6 +1263,7 @@ function start(): void {
     transfer.stop();
     stopWaitingForAccess();
     const mateStopped = stopMate();
+    pets.destroy();
     tray.destroy();
     panels.destroy();
     overlays.destroy();

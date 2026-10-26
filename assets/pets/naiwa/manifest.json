@@ -1,0 +1,279 @@
+{
+  "id": "naiwa",
+  "width": 160,
+  "height": 160,
+  "anims": {
+    "sit": {
+      "frames": [
+        "sit_00.png",
+        "sit_01.png",
+        "sit_02.png",
+        "sit_03.png",
+        "sit_04.png",
+        "sit_05.png",
+        "sit_06.png",
+        "sit_07.png",
+        "sit_08.png",
+        "sit_09.png",
+        "sit_10.png",
+        "sit_11.png"
+      ],
+      "fps": 8
+    },
+    "walk": {
+      "frames": [
+        "walk_00.png",
+        "walk_01.png",
+        "walk_02.png",
+        "walk_03.png",
+        "walk_04.png",
+        "walk_05.png",
+        "walk_06.png",
+        "walk_07.png",
+        "walk_08.png",
+        "walk_09.png",
+        "walk_10.png",
+        "walk_11.png"
+      ],
+      "fps": 8
+    },
+    "victory": {
+      "frames": [
+        "victory_00.png",
+        "victory_01.png",
+        "victory_02.png",
+        "victory_03.png",
+        "victory_04.png",
+        "victory_05.png",
+        "victory_06.png",
+        "victory_07.png",
+        "victory_08.png",
+        "victory_09.png",
+        "victory_10.png",
+        "victory_11.png"
+      ],
+      "fps": 8
+    },
+    "laugh": {
+      "frames": [
+        "laugh_00.png",
+        "laugh_01.png",
+        "laugh_02.png",
+        "laugh_03.png",
+        "laugh_04.png",
+        "laugh_05.png",
+        "laugh_06.png",
+        "laugh_07.png",
+        "laugh_08.png",
+        "laugh_09.png",
+        "laugh_10.png",
+        "laugh_11.png"
+      ],
+      "fps": 8
+    },
+    "stretch": {
+      "frames": [
+        "stretch_00.png",
+        "stretch_01.png",
+        "stretch_02.png",
+        "stretch_03.png",
+        "stretch_04.png",
+        "stretch_05.png",
+        "stretch_06.png",
+        "stretch_07.png",
+        "stretch_08.png",
+        "stretch_09.png",
+        "stretch_10.png",
+        "stretch_11.png"
+      ],
+      "fps": 8
+    },
+    "think": {
+      "frames": [
+        "think_00.png",
+        "think_01.png",
+        "think_02.png",
+        "think_03.png",
+        "think_04.png",
+        "think_05.png",
+        "think_06.png",
+        "think_07.png",
+        "think_08.png",
+        "think_09.png",
+        "think_10.png",
+        "think_11.png"
+      ],
+      "fps": 8
+    },
+    "noodle_dance": {
+      "frames": [
+        "noodle_dance_00.png",
+        "noodle_dance_01.png",
+        "noodle_dance_02.png",
+        "noodle_dance_03.png",
+        "noodle_dance_04.png",
+        "noodle_dance_05.png",
+        "noodle_dance_06.png",
+        "noodle_dance_07.png",
+        "noodle_dance_08.png",
+        "noodle_dance_09.png",
+        "noodle_dance_10.png",
+        "noodle_dance_11.png"
+      ],
+      "fps": 8
+    },
+    "belly_drum": {
+      "frames": [
+        "belly_drum_00.png",
+        "belly_drum_01.png",
+        "belly_drum_02.png",
+        "belly_drum_03.png",
+        "belly_drum_04.png",
+        "belly_drum_05.png",
+        "belly_drum_06.png",
+        "belly_drum_07.png",
+        "belly_drum_08.png",
+        "belly_drum_09.png",
+        "belly_drum_10.png",
+        "belly_drum_11.png"
+      ],
+      "fps": 8
+    },
+    "brain_loading": {
+      "frames": [
+        "brain_loading_00.png",
+        "brain_loading_01.png",
+        "brain_loading_02.png",
+        "brain_loading_03.png",
+        "brain_loading_04.png",
+        "brain_loading_05.png",
+        "brain_loading_06.png",
+        "brain_loading_07.png",
+        "brain_loading_08.png",
+        "brain_loading_09.png",
+        "brain_loading_10.png",
+        "brain_loading_11.png"
+      ],
+      "fps": 8
+    },
+    "fake_faint": {
+      "frames": [
+        "fake_faint_00.png",
+        "fake_faint_01.png",
+        "fake_faint_02.png",
+        "fake_faint_03.png",
+        "fake_faint_04.png",
+        "fake_faint_05.png",
+        "fake_faint_06.png",
+        "fake_faint_07.png",
+        "fake_faint_08.png",
+        "fake_faint_09.png",
+        "fake_faint_10.png",
+        "fake_faint_11.png"
+      ],
+      "fps": 8
+    },
+    "freeze": {
+      "frames": [
+        "freeze_00.png",
+        "freeze_01.png",
+        "freeze_02.png",
+        "freeze_03.png",
+        "freeze_04.png",
+        "freeze_05.png",
+        "freeze_06.png",
+        "freeze_07.png",
+        "freeze_08.png",
+        "freeze_09.png",
+        "freeze_10.png",
+        "freeze_11.png"
+      ],
+      "fps": 8
+    },
+    "play_bow": {
+      "frames": [
+        "play_bow_00.png",
+        "play_bow_01.png",
+        "play_bow_02.png",
+        "play_bow_03.png",
+        "play_bow_04.png",
+        "play_bow_05.png",
+        "play_bow_06.png",
+        "play_bow_07.png",
+        "play_bow_08.png",
+        "play_bow_09.png",
+        "play_bow_10.png",
+        "play_bow_11.png"
+      ],
+      "fps": 8
+    },
+    "pretzel_twist": {
+      "frames": [
+        "pretzel_twist_00.png",
+        "pretzel_twist_01.png",
+        "pretzel_twist_02.png",
+        "pretzel_twist_03.png",
+        "pretzel_twist_04.png",
+        "pretzel_twist_05.png",
+        "pretzel_twist_06.png",
+        "pretzel_twist_07.png",
+        "pretzel_twist_08.png",
+        "pretzel_twist_09.png",
+        "pretzel_twist_10.png",
+        "pretzel_twist_11.png"
+      ],
+      "fps": 8
+    },
+    "idle": {
+      "frames": [
+        "sit_00.png",
+        "sit_01.png",
+        "sit_02.png",
+        "sit_03.png",
+        "sit_04.png",
+        "sit_05.png",
+        "sit_06.png",
+        "sit_07.png",
+        "sit_08.png",
+        "sit_09.png",
+        "sit_10.png",
+        "sit_11.png"
+      ],
+      "fps": 8
+    },
+    "happy": {
+      "frames": [
+        "victory_00.png",
+        "victory_01.png",
+        "victory_02.png",
+        "victory_03.png",
+        "victory_04.png",
+        "victory_05.png",
+        "victory_06.png",
+        "victory_07.png",
+        "victory_08.png",
+        "victory_09.png",
+        "victory_10.png",
+        "victory_11.png"
+      ],
+      "fps": 8
+    },
+    "held": {
+      "frames": [
+        "noodle_dance_00.png",
+        "noodle_dance_01.png",
+        "noodle_dance_02.png",
+        "noodle_dance_03.png",
+        "noodle_dance_04.png",
+        "noodle_dance_05.png",
+        "noodle_dance_06.png",
+        "noodle_dance_07.png",
+        "noodle_dance_08.png",
+        "noodle_dance_09.png",
+        "noodle_dance_10.png",
+        "noodle_dance_11.png"
+      ],
+      "fps": 8
+    }
+  }
+}
