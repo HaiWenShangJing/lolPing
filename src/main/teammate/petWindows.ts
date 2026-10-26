@@ -57,6 +57,8 @@ export class PetWindows {
   private ping: Point | null = null;
   /** The answer hasn't come yet: pets at the ping think, otherwise they are happy. */
   private waiting = false;
+  /** The ping is an ordinary one: pets just stand there in their chosen resting animation. */
+  private visiting = false;
   private captureExcluded = false;
 
   constructor(private readonly dir: string) {
@@ -76,7 +78,7 @@ export class PetWindows {
       const pet = this.pets.get(id);
       if (!pet) continue;
       pet.rest = this.restFor(id, pet.manifest);
-      if (pet.where === 'home' && !pet.drag) this.setPose(pet, 'idle');
+      if (pet.pose === 'idle' && !pet.drag) this.setPose(pet, 'idle');
     }
     for (const id of want) if (!this.pets.has(id) && !this.loading.has(id)) void this.create(id);
     if (want.length === 0) this.stopTimer();
@@ -87,6 +89,7 @@ export class PetWindows {
     if (this.pets.size === 0) return;
     this.ping = ping;
     this.waiting = true;
+    this.visiting = false;
     const all = [...this.pets.values()];
     all.forEach((pet, i) => {
       pet.drag = null; // a drag whose release was swallowed by the ping gesture would freeze it
@@ -102,6 +105,7 @@ export class PetWindows {
     if (this.pets.size === 0) return;
     this.ping = ping;
     this.waiting = false;
+    this.visiting = true;
     const all = [...this.pets.values()];
     all.forEach((pet, i) => {
       pet.drag = null; // a drag whose release was swallowed by the ping gesture would freeze it
@@ -248,7 +252,7 @@ export class PetWindows {
       } else if (pet.where === 'toPing') {
         pet.where = 'atPing';
         pet.flip = false;
-        this.setPose(pet, this.waiting ? 'think' : 'happy');
+        this.setPose(pet, this.waiting ? 'think' : this.visiting ? 'idle' : 'happy');
       } else {
         pet.where = 'home';
         pet.flip = false;
