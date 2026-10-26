@@ -20,7 +20,7 @@ import type { SettingsStore } from './settingsStore';
 import { ProviderError, type ProviderAdapter } from './teammate/providers/types';
 import { INSTRUCTIONS_MAX_CHARS, type SecretStore } from './teammate/secrets';
 
-const PROJECT_URL = 'https://github.com/darrenprx/lolPing';
+const PROJECT_URL = 'https://github.com/HaiWenShangJing/lolPing';
 /** Where "What's new" goes when no update is known. */
 export const LATEST_RELEASE_URL = `${PROJECT_URL}/releases/latest`;
 
