@@ -1,5 +1,6 @@
 import type { PetApi } from '../../shared/petIpc';
 import type { PetAnim } from '../../shared/teammate/pet';
+import { PET_POSES } from '../../shared/teammate/pet';
 
 declare global {
   interface Window {
@@ -21,11 +22,16 @@ function preload(url: string): void {
   cache.set(url, el);
 }
 
+function preloadAnim(name: string): void {
+  for (const f of anims?.[name]?.frames ?? []) preload(`${base}/${f}`);
+}
+
 function play(name: string): void {
   if (timer !== null) clearInterval(timer);
   const a = anims?.[name];
   if (!a) return;
   current = name;
+  preloadAnim(name);
   let i = 0;
   const show = (): void => {
     img.src = `${base}/${a.frames[i % a.frames.length]}`;
@@ -38,7 +44,9 @@ function play(name: string): void {
 window.petApi.onInit((init) => {
   base = init.base;
   anims = init.manifest.anims;
-  for (const a of Object.values(anims)) for (const f of a.frames) preload(`${base}/${f}`);
+  // A pack can have dozens of long animations: only the ones the pet moves through are loaded ahead; the rest load when played.
+  for (const pose of PET_POSES) preloadAnim(pose);
+  preloadAnim(init.rest);
   play(init.rest);
 });
 

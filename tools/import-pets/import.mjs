@@ -1,12 +1,17 @@
 // Downloads the art for the desktop pets into <settings folder>/pets/<id>/ and writes each manifest.json.
 // The art belongs to its authors and is not part of lolPing: run this once on your own computer.
-//   node tools/import-pets/import.mjs [whale] [naiwa]
-import { mkdir, writeFile } from 'node:fs/promises';
+//   node tools/import-pets/import.mjs [--out <pets folder>] [whale] [naiwa] [shenshen] [airi]
+// `shenshen` turns transparent WebM clips into frames, so it needs ffmpeg (with libvpx-vp9 and libwebp) on the PATH or in
+// the FFMPEG variable; `airi` draws its frames with @napi-rs/canvas (`npm install --no-save @napi-rs/canvas` if it is missing).
+import { execFile } from 'node:child_process';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
 const RAW = 'https://raw.githubusercontent.com';
 const HEIGHT = 160;
+const run = promisify(execFile);
 
 // `anims`: every animation to download, name → [path under base, frames]. `poses`: the five poses a pack must have,
 // when they are another animation of the pack.
@@ -41,9 +46,9 @@ async function download(url) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function importPet(id) {
+async function importPngPet(id, root) {
   const pet = PETS[id];
-  const out = join(settingsDir(), 'pets', id);
+  const out = join(root, id);
   await mkdir(out, { recursive: true });
   const anims = {};
   let size = null;
@@ -66,5 +71,135 @@ async function importPet(id) {
   console.log(`${id}: ${out}`);
 }
 
-const wanted = process.argv.slice(2).filter((a) => a in PETS);
-for (const id of wanted.length > 0 ? wanted : Object.keys(PETS)) await importPet(id);
+// 深深 from MerZlin/dsh-pet-indesktop: 640×360 transparent VP9 WebM clips at 24 fps, about ten seconds each. Every clip is
+// cropped to the area she and her props move in and sampled at `fps`; `clips` maps an animation to its file under `base`.
+const SHENSHEN = {
+  base: `${RAW}/MerZlin/dsh-pet-indesktop/main/assets/characters/shenshen/videos`,
+  crop: { x: 170, y: 15, w: 300, h: 325 },
+  height: 170,
+  fps: 10,
+  clips: {
+    idle: 'idle/待机呼吸休闲', walk: 'move/漂浮踏步', held: 'drag/被鼠标拖拽悬空反馈', think: 'random/工作状态-思考冒泡',
+    happy: 'click/点击回应-开心跃动', wave: 'click/点击回应-元气挥手', giggle: 'click/点击回应-挠痒咯咯笑',
+    shy: 'click/点击回应-害羞惊讶', sulk: 'click/点击回应-傲娇生气', dance: 'random/可爱宅舞', sway: 'random/轻快摇摆舞',
+    hum: 'random/悠闲哼歌', nap: 'random/原地小憩沉眠', yawn: 'random/哈欠连天', stretch: 'random/超大伸懒腰',
+    bubbles: 'random/鲸鱼吐泡泡特效', look: 'turn/东张西望', tail: 'random/用鲸鱼尾巴拍打地面', cat: 'random/撸猫',
+  },
+};
+
+async function importShenshen(root) {
+  const { base, crop, height, fps, clips } = SHENSHEN;
+  const ffmpeg = process.env.FFMPEG ?? 'ffmpeg';
+  const width = Math.round((crop.w / crop.h) * height);
+  const out = join(root, 'shenshen');
+  await mkdir(out, { recursive: true });
+  // The decoder leaves the clear background at alpha 1, which shows as a faint box on a light desktop: zero it.
+  const filter = `fps=${fps},crop=${crop.w}:${crop.h}:${crop.x}:${crop.y},scale=${width}:${height}:flags=lanczos,format=yuva420p,lutyuv=a='if(lt(val,12),0,val)'`;
+  const anims = {};
+  const queue = Object.entries(clips);
+  // ffmpeg is single-threaded for this work: a few clips at a time.
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const [name, clip] = next;
+      const webm = join(out, `${name}.webm`);
+      const url = `${base}/${clip.split('/').map(encodeURIComponent).join('/')}.webm`;
+      await writeFile(webm, await download(url));
+      // The native VP9 decoder drops the alpha plane; libvpx-vp9 keeps it.
+      await run(ffmpeg, [
+        '-v', 'error', '-y', '-c:v', 'libvpx-vp9', '-i', webm, '-vf', filter,
+        '-c:v', 'libwebp', '-quality', '80', '-compression_level', '3', join(out, `${name}_%03d.webp`),
+      ]);
+      await rm(webm);
+      console.log(`shenshen: ${name}`);
+    }
+  }));
+  const files = await readdir(out);
+  for (const name of Object.keys(clips)) {
+    const frames = files.filter((f) => f.startsWith(`${name}_`) && f.endsWith('.webp')).sort();
+    if (frames.length === 0) throw new Error(`shenshen: no frames for ${name}`);
+    anims[name] = { frames, fps };
+  }
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ id: 'shenshen', width, height, anims }, null, 2));
+  console.log(`shenshen: ${out}`);
+}
+
+// The AIRI chat stickers from moeru-ai/airi (MIT): twelve chibi busts with transparent backgrounds. They are still, so each
+// animation is one sticker moved a little: `anims` maps an animation to its sticker and how it moves.
+const AIRI = {
+  base: `${RAW}/moeru-ai/airi/main/packages/stage-ui/src/assets/stickers`,
+  size: 168,
+  draw: 140,
+  fps: 12,
+  anims: {
+    idle: ['happy', 'bob'], run: ['happy', 'run'], celebrate: ['celebrate', 'hop'], love: ['affectionate', 'float'],
+    thanks: ['thanks', 'float'], agree: ['agree', 'nod'], confused: ['confused', 'sway'], surprised: ['surprised', 'hop'],
+    awkward: ['awkward', 'sway'], disagree: ['disagree', 'shake'], angry: ['angry', 'shake'], sad: ['sad', 'sway'],
+    tired: ['tired', 'sway'], held: ['surprised', 'shake'],
+  },
+  poses: { walk: 'run', think: 'confused', happy: 'celebrate' },
+};
+
+const TAU = Math.PI * 2;
+const hop = (p) => Math.max(0, Math.sin(TAU * p));
+// How a sticker is moved at `p` (0 to 1 around the loop): offsets and tilt in pixels and radians, scales about its feet.
+const MOTIONS = {
+  bob: { frames: 24, at: (p) => ({ sy: 1 + 0.02 * Math.sin(TAU * p), sx: 1 - 0.01 * Math.sin(TAU * p) }) },
+  float: { frames: 24, at: (p) => ({ dy: -5 * (0.5 - 0.5 * Math.cos(TAU * p)), rot: 0.02 * Math.sin(TAU * p) }) },
+  nod: { frames: 24, at: (p) => ({ dy: 5 * hop(2 * p), sy: 1 - 0.03 * hop(2 * p) }) },
+  sway: { frames: 24, at: (p) => ({ rot: 0.05 * Math.sin(TAU * p), sy: 1 + 0.015 * Math.sin(TAU * p) }) },
+  hop: { frames: 18, at: (p) => ({ dy: -14 * hop(p), sy: 0.96 + 0.1 * hop(p), sx: 1.02 - 0.05 * hop(p) }) },
+  shake: { frames: 12, at: (p) => ({ dx: 4 * Math.sin(TAU * 3 * p), rot: 0.03 * Math.sin(TAU * 3 * p) }) },
+  run: {
+    frames: 12,
+    at: (p) => ({ dy: -10 * Math.abs(Math.sin(TAU * p)), rot: 0.07 * Math.sin(TAU * p), sy: 0.97 + 0.06 * Math.abs(Math.sin(TAU * p)) }),
+  },
+};
+
+async function importAiri(root) {
+  let canvasApi;
+  try {
+    canvasApi = await import('@napi-rs/canvas');
+  } catch {
+    throw new Error('airi needs @napi-rs/canvas: run `npm install --no-save @napi-rs/canvas` first');
+  }
+  const { createCanvas, loadImage } = canvasApi;
+  const { base, size, draw, fps, anims: defs, poses } = AIRI;
+  const out = join(root, 'airi');
+  await mkdir(out, { recursive: true });
+  const stickers = new Map();
+  const anims = {};
+  for (const [name, [sticker, motion]] of Object.entries(defs)) {
+    if (!stickers.has(sticker)) stickers.set(sticker, await loadImage(await download(`${base}/airi-${sticker}.png`)));
+    const { frames: count, at } = MOTIONS[motion];
+    const frames = [];
+    for (let i = 0; i < count; i++) {
+      const { dx = 0, dy = 0, rot = 0, sx = 1, sy = 1 } = at(i / count);
+      const canvas = createCanvas(size, size);
+      const g = canvas.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.translate(size / 2 + dx, size - 4 + dy);
+      g.rotate(rot);
+      g.scale(sx, sy);
+      g.drawImage(stickers.get(sticker), -draw / 2, -draw, draw, draw);
+      const file = `${name}_${String(i).padStart(2, '0')}.webp`;
+      await writeFile(join(out, file), canvas.toBuffer('image/webp', 92));
+      frames.push(file);
+    }
+    anims[name] = { frames, fps };
+  }
+  for (const [pose, from] of Object.entries(poses)) anims[pose] = anims[from];
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ id: 'airi', width: size, height: size, anims }, null, 2));
+  console.log(`airi: ${out}`);
+}
+
+const args = process.argv.slice(2);
+const outAt = args.indexOf('--out');
+const root = outAt >= 0 ? args[outAt + 1] : join(settingsDir(), 'pets');
+if (!root) throw new Error('--out needs a folder');
+const known = [...Object.keys(PETS), 'shenshen', 'airi'];
+const wanted = args.filter((a, i) => known.includes(a) && i !== outAt + 1);
+for (const id of wanted.length > 0 ? wanted : known) {
+  if (id === 'shenshen') await importShenshen(root);
+  else if (id === 'airi') await importAiri(root);
+  else await importPngPet(id, root);
+}

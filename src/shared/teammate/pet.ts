@@ -1,10 +1,10 @@
 /** The desktop pet: which characters show, how a character's animation pack reads, and how one walks to a ping. */
 
-export const PET_IDS = ['whale', 'naiwa'] as const;
+export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi'] as const;
 export type PetId = (typeof PET_IDS)[number];
 
 /** Which way each pack's art looks when unflipped, so running can face the way it goes. */
-export const PET_FACES: Record<PetId, 'left' | 'right'> = { whale: 'right', naiwa: 'left' };
+export const PET_FACES: Record<PetId, 'left' | 'right'> = { whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right' };
 
 /** One character's setting: whether it shows, and the animation it plays while it rests on the desktop. */
 export interface PetSetting {
@@ -20,11 +20,20 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
     'sit', 'laugh', 'stretch', 'victory', 'belly_drum', 'brain_loading', 'fake_faint', 'freeze', 'noodle_dance',
     'play_bow', 'pretzel_twist', 'think',
   ],
+  shenshen: [
+    'idle', 'wave', 'giggle', 'shy', 'sulk', 'dance', 'sway', 'hum', 'nap', 'yawn', 'stretch', 'bubbles', 'look', 'tail',
+    'cat', 'think',
+  ],
+  airi: [
+    'idle', 'celebrate', 'love', 'thanks', 'agree', 'confused', 'surprised', 'awkward', 'disagree', 'angry', 'sad', 'tired',
+  ],
 };
 
 export const DEFAULT_PETS: PetsSetting = {
   whale: { on: false, rest: PET_RESTS.whale[0] },
   naiwa: { on: false, rest: PET_RESTS.naiwa[0] },
+  shenshen: { on: false, rest: PET_RESTS.shenshen[0] },
+  airi: { on: false, rest: PET_RESTS.airi[0] },
 };
 
 /** Reads the saved setting; anything unknown falls back to off and the character's default animation. */
@@ -38,7 +47,9 @@ export function normalizePets(raw: unknown): PetsSetting {
       rest: typeof o.rest === 'string' && PET_RESTS[id].includes(o.rest) ? o.rest : DEFAULT_PETS[id].rest,
     };
   };
-  return { whale: one('whale'), naiwa: one('naiwa') };
+  const pets = { ...DEFAULT_PETS };
+  for (const id of PET_IDS) pets[id] = one(id);
+  return pets;
 }
 
 export const petIds = (pets: PetsSetting): PetId[] => PET_IDS.filter((id) => pets[id].on);
@@ -64,7 +75,7 @@ export interface PetManifest {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const FRAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 const NAME_RE = /^[a-z0-9_]{1,32}$/;
-const MAX_FRAMES = 64;
+const MAX_FRAMES = 128;
 const MAX_SIZE = 512;
 
 function anim(raw: unknown): PetAnim | null {
@@ -113,11 +124,12 @@ const STAND_GAP = 18;
 
 /**
  * Where pet `index` of `count` stands (its top-left, DIPs) beside the ping at `ping`: the first on its left, the
- * second on its right, so two pets don't overlap and the ping stays visible between them.
+ * second on its right, then the rest alternate outward, so no two pets overlap and the ping stays visible between them.
  */
 export function standBeside(ping: Point, index: number, count: number, size: { width: number; height: number }): Point {
   const right = count > 1 && index % 2 === 1;
-  const x = right ? ping.x + STAND_GAP : ping.x - STAND_GAP - size.width;
+  const out = Math.floor(index / 2) * (size.width + 6);
+  const x = right ? ping.x + STAND_GAP + out : ping.x - STAND_GAP - size.width - out;
   return { x: Math.round(x), y: Math.round(ping.y - size.height * 0.7) };
 }
 

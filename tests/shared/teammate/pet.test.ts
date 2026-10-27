@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  keepInside, normalizePets, parsePetManifest, petIds, PET_POSES, standBeside, stepToward,
+  keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside, stepToward,
 } from '../../../src/shared/teammate/pet';
 
 const pack = (over: Record<string, unknown> = {}) => ({
@@ -11,27 +11,43 @@ const pack = (over: Record<string, unknown> = {}) => ({
 
 describe('petIds', () => {
   it('lists the characters that are on', () => {
-    const on = (whale: boolean, naiwa: boolean) => ({ whale: { on: whale, rest: 'idle' }, naiwa: { on: naiwa, rest: 'sit' } });
-    expect(petIds(on(false, false))).toEqual([]);
-    expect(petIds(on(true, false))).toEqual(['whale']);
-    expect(petIds(on(false, true))).toEqual(['naiwa']);
-    expect(petIds(on(true, true))).toEqual(['whale', 'naiwa']);
+    const on = (...ids: string[]) => ({
+      whale: { on: ids.includes('whale'), rest: 'idle' }, naiwa: { on: ids.includes('naiwa'), rest: 'sit' },
+      shenshen: { on: ids.includes('shenshen'), rest: 'idle' }, airi: { on: ids.includes('airi'), rest: 'idle' },
+    });
+    expect(petIds(on())).toEqual([]);
+    expect(petIds(on('whale'))).toEqual(['whale']);
+    expect(petIds(on('naiwa'))).toEqual(['naiwa']);
+    expect(petIds(on('airi', 'whale'))).toEqual(['whale', 'airi']);
+    expect(petIds(on('whale', 'naiwa', 'shenshen', 'airi'))).toEqual(['whale', 'naiwa', 'shenshen', 'airi']);
   });
 });
 
 describe('normalizePets', () => {
-  it('defaults to both off, resting in the first animation', () => {
-    expect(normalizePets(undefined)).toEqual({ whale: { on: false, rest: 'idle' }, naiwa: { on: false, rest: 'sit' } });
+  it('defaults to all off, resting in the first animation', () => {
+    expect(normalizePets(undefined)).toEqual({
+      whale: { on: false, rest: 'idle' }, naiwa: { on: false, rest: 'sit' },
+      shenshen: { on: false, rest: 'idle' }, airi: { on: false, rest: 'idle' },
+    });
   });
 
   it('keeps a known animation and drops an unknown one', () => {
-    const p = normalizePets({ whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' } });
+    const p = normalizePets({
+      whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' },
+      shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' },
+    });
     expect(p.whale).toEqual({ on: true, rest: 'dance' });
     expect(p.naiwa).toEqual({ on: true, rest: 'sit' });
+    expect(p.shenshen).toEqual({ on: true, rest: 'dance' });
+    expect(p.airi).toEqual({ on: true, rest: 'idle' });
   });
 
   it('only turns a character on for true', () => {
     expect(normalizePets({ whale: { on: 'yes' } }).whale.on).toBe(false);
+  });
+
+  it('only offers resting animations a pack can have as a name', () => {
+    for (const id of PET_IDS) for (const rest of PET_RESTS[id]) expect(rest).toMatch(/^[a-z0-9_]{1,32}$/);
   });
 });
 describe('parsePetManifest', () => {
@@ -87,6 +103,11 @@ describe('standBeside', () => {
 
   it('puts a single pet left of the ping', () => {
     expect(standBeside({ x: 500, y: 400 }, 0, 1, size).x).toBeLessThan(500);
+  });
+
+  it('keeps four pets from overlapping, two on each side', () => {
+    const xs = [0, 1, 2, 3].map((i) => standBeside({ x: 500, y: 400 }, i, 4, size).x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(size.width);
   });
 });
 

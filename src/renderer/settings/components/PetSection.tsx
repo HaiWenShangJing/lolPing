@@ -12,7 +12,9 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
   const t = useText();
   const m = t.teammate.settings;
   const mate = s.teammate;
-  const names: Record<PetId, string> = { whale: m.petWhale, naiwa: m.petNaiwa };
+  const names: Record<PetId, string> = {
+    whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri,
+  };
 
   return (
     <>

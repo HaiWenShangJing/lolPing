@@ -160,15 +160,15 @@ Windows 和 macOS 版本在启动 10 秒后向 GitHub 检查一次新版本，�
 - **多个位置：** 按住提问键不放，可以在同一块屏幕上标记最多 4 个位置，例如要比较的三个价格。松开后它们作为一次提问发出。
 - **回答：** 位置旁边的一句话、队友在相关位置发的信号，点**更多**打开卡片。在卡片里回复，或在新位置发推进信号，可以接着问。你滚动页面、移动窗口或切换应用时，队友的信号会淡出，因为它们指的东西已经移动了。
 - **共用按键：** 提问键可以和信号键相同（**与信号键相同**）。这时你的信号只发给队友，不会发给房间里的朋友。
-- **桌宠：** 设置 → **桌宠**（最后一页）可以分别开关鲸鱼娘和奶蛙（可以一起），并选择各自的待机动作。不需要开启 AI 队友。可以把它们拖到任何位置，放下的地方就是它的“家”。你每放一个信号（轮盘或 Alt + 点击），它们都会朝信号的方向跑过去，并以各自的待机动作停在旁边，直到下一个信号。向 AI 队友提问时，它们还会在那里等回答时思考，回答到了就欢呼，信号淡出后走回原位。更换待机动作会立即生效。队友读取的截图里不会有它们，仅支持 Windows 和 macOS。
+- **桌宠：** 设置 → **桌宠**（最后一页）可以分别开关鲸鱼娘、奶蛙、深深和 Airi（可以任意组合），并选择各自的待机动作。不需要开启 AI 队友。可以把它们拖到任何位置，放下的地方就是它的“家”。你每放一个信号（轮盘或 Alt + 点击），它们都会朝信号的方向跑过去，并以各自的待机动作停在旁边，直到下一个信号。向 AI 队友提问时，它们还会在那里等回答时思考，回答到了就欢呼，信号淡出后走回原位。更换待机动作会立即生效。队友读取的截图里不会有它们，仅支持 Windows 和 macOS。
 
-  <p align="center"><img src="docs/media/pets.zh-CN.png" width="640" alt="设置里的桌宠页面，鲸鱼娘和奶蛙各有一个开关和一个待机动作选项"></p>
+  <p align="center"><img src="docs/media/pets.zh-CN.png" width="640" alt="设置里的桌宠页面，鲸鱼娘、奶蛙、深深和 Airi 各有一个开关和一个待机动作选项"></p>
 
-  鲸鱼娘的待机动作有站立、走路、跳舞、飞行和闭眼。奶蛙有十二个：坐着、大笑、伸懒腰、胜利、拍肚皮、脑子加载中、假装晕倒、冻住、面条舞、邀玩、扭成麻花和思考。
+  鲸鱼娘的待机动作有站立、走路、跳舞、飞行和闭眼。奶蛙有十二个：坐着、大笑、伸懒腰、胜利、拍肚皮、脑子加载中、假装晕倒、冻住、面条舞、邀玩、扭成麻花和思考。深深有十六个：站立、挥手、咯咯笑、害羞、傲娇生气、跳舞、轻快摇摆、哼歌、小憩、哈欠、伸懒腰、吐泡泡、东张西望、拍尾巴、撸猫和思考。Airi 有十二个：站立、庆祝、爱心、感谢、同意、困惑、惊讶、尴尬、拒绝、生气、难过和疲惫。
 
-  <p align="center"><img src="docs/media/pets-animations.zh-CN.png" width="640" alt="可选的待机动作：鲸鱼娘五个，奶蛙十二个"></p>
+  <p align="center"><img src="docs/media/pets-animations.zh-CN.png" width="640" alt="可选的待机动作：鲸鱼娘五个，奶蛙十二个，深深十六个，Airi 十二个"></p>
 
-  素材放在 `assets/pets`，首次启动时会复制到 lolPing 设置文件夹的 `pets` 文件夹里，每个角色一个文件夹（`whale`、`naiwa`），里面是 `manifest.json` 和各帧图片，改那份副本就能换角色。运行 `node tools/import-pets/import.mjs` 可从原作者的仓库重新下载。素材不属于 lolPing 且没有许可证，再分发之前请先确认各作者的许可。
+  素材放在 `assets/pets`，首次启动时会复制到 lolPing 设置文件夹的 `pets` 文件夹里，每个角色一个文件夹（`whale`、`naiwa`、`shenshen`、`airi`），里面是 `manifest.json` 和各帧图片，改那份副本就能换角色。运行 `node tools/import-pets/import.mjs` 可从原作者的仓库重新下载（`--out <文件夹>` 可以写到别处，比如 `assets/pets`；深深需要带 libvpx-vp9 和 libwebp 的 ffmpeg，Airi 需要 `@napi-rs/canvas`）。素材不属于 lolPing：鲸鱼娘和奶蛙没有许可证，Airi 是 MIT，深深仅限个人非商业使用。再分发之前请先确认各作者的许可。
 - **替你做事：** 复制会直接进行。粘贴、替换、添加日程和打开链接之前，会先弹出确认卡片：**允许一次**、**总是允许**或**拒绝**。填写表单前总会先预览每个字段，从不填写密码、银行卡号和证件号，也从不提交。粘贴会等你的手离开鼠标和键盘后再进行，完成后会恢复你原来的剪贴板。设置里的**总是允许**列出你永久允许过的操作，每一项都可以删除。
 - **配置：** Anthropic、OpenAI、Google Gemini、DeepSeek、通义千问、Kimi、智谱 GLM、豆包、MiniMax、Mistral、xAI、OpenRouter、Ollama、LM Studio，或任何兼容 OpenAI 的地址。**应用规则**可以把某个应用里的提问交给指定配置，**“全局”配置**可以专门回答较长的问题。
 - **编程代理：** Claude Code 和 DeepSeek Harness 已经测试过。Codex、Gemini CLI、Qwen Code、Copilot CLI、Cursor CLI、opencode、Kimi Code、Auggie、Goose、Droid、Qoder CLI 和 Kiro CLI 已加入，但还没有测试。代理在它的项目文件夹里运行：一个固定的文件夹，或你编辑器里打开的那个。Claude Code 修改文件或运行命令之前，lolPing 会先问你；其他代理按它们自己的审批设置运行。**为我的编辑器推荐规则**会把 VS Code、Cursor 和 JetBrains IDE 里的“帮我做”和“哪里不对”交给代理。在历史里点**在 <代理> 中打开**，可以在终端里接着这个代理的会话。
@@ -247,7 +247,7 @@ npm run dev
 ## 致谢
 
 - **lolPing** 原作者是 [Danrui Meng (darrenprx)](https://github.com/darrenprx/lolPing)。本仓库是它的分支，加入了桌宠、Linux 后端和上文所述的改动。
-- **桌宠素材：** 鲸鱼娘来自 [silicon-sbt/DeepSeaPet](https://github.com/silicon-sbt/DeepSeaPet)，奶蛙的帧来自 [HanYang544/naiwa](https://github.com/HanYang544/naiwa)。实现思路还参考了 [himoew/DeepSeekPet](https://github.com/himoew/DeepSeekPet) 和 [LynnShaw/naiwa-pet](https://github.com/LynnShaw/naiwa-pet)。角色版权归各自原作者所有。
+- **桌宠素材：** 鲸鱼娘来自 [silicon-sbt/DeepSeaPet](https://github.com/silicon-sbt/DeepSeaPet)，奶蛙的帧来自 [HanYang544/naiwa](https://github.com/HanYang544/naiwa)。深深来自 [MerZlin/dsh-pet-indesktop](https://github.com/MerZlin/dsh-pet-indesktop)（动画素材整理自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)，角色「溟月」出自画师上善无形，仅限个人非商业使用），Airi 取自 [moeru-ai/airi](https://github.com/moeru-ai/airi) 的 MIT 许可表情贴纸。实现思路还参考了 [himoew/DeepSeekPet](https://github.com/himoew/DeepSeekPet) 和 [LynnShaw/naiwa-pet](https://github.com/LynnShaw/naiwa-pet)。角色版权归各自原作者所有。
 
 ## 许可证
 
