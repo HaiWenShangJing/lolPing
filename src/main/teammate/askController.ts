@@ -26,6 +26,7 @@ import {
 } from '../../shared/teammate/settings';
 import { threadAction } from '../../shared/teammate/threads';
 import { lastMood } from '../../shared/teammate/mood';
+import { talkMs } from '../../shared/teammate/live2d';
 import { rememberReply } from '../../shared/teammate/memory';
 import {
   CONSENT_TOOL, applyLimits, parseConsent, parseToolCall, toolDefs, visitorToolDefs, type ActionCall, type Target,
@@ -1374,7 +1375,7 @@ export class AskController extends EventEmitter {
     }
     run.machine.done();
     this.stopRun();
-    this.deps.pet?.cheer(lastMood(run.calls));
+    this.deps.pet?.cheer(lastMood(run.calls), talkMs(run.line));
     // A line whose time ran out while the answer was still coming gets its time again from now.
     if (this.bubbleShown && this.bubbleTimer === null) this.armBubble(run, run.line);
     if (run.autoCard && !this.cardShown) this.openCard(run);

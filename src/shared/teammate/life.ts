@@ -6,6 +6,7 @@ export const LIFE_ANIMS: Record<PetId, readonly string[]> = {
   naiwa: ['stretch', 'laugh', 'play_bow', 'brain_loading', 'pretzel_twist', 'noodle_dance'],
   shenshen: ['wave', 'giggle', 'hum', 'yawn', 'stretch', 'bubbles', 'look', 'tail', 'cat', 'sway'],
   airi: ['tired', 'confused', 'awkward', 'love', 'thanks'],
+  hiyori: ['sway', 'look', 'hum', 'giggle', 'shy', 'yawn', 'wink'],
 };
 
 /** Milliseconds a pet rests between two of its little shows, and how long one lasts. */

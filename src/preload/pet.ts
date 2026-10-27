@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { PetApi, PetDragMsg, PetInit, PetPoseMsg } from '../shared/petIpc';
+import type { PetApi, PetDragMsg, PetHitMsg, PetInit, PetLookMsg, PetPoseMsg, PetTalkMsg } from '../shared/petIpc';
 
 // Channel names are inlined: a sandboxed preload can't require a shared chunk.
 const api: PetApi = {
@@ -13,7 +13,18 @@ const api: PetApi = {
     ipcRenderer.on('pet:pose', listener);
     return () => ipcRenderer.removeListener('pet:pose', listener);
   },
+  onLook: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, msg: PetLookMsg): void => cb(msg);
+    ipcRenderer.on('pet:look', listener);
+    return () => ipcRenderer.removeListener('pet:look', listener);
+  },
+  onTalk: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, msg: PetTalkMsg): void => cb(msg);
+    ipcRenderer.on('pet:talk', listener);
+    return () => ipcRenderer.removeListener('pet:talk', listener);
+  },
   drag: (msg: PetDragMsg) => ipcRenderer.send('pet:drag', msg),
+  hit: (msg: PetHitMsg) => ipcRenderer.send('pet:hit', msg),
 };
 
 contextBridge.exposeInMainWorld('petApi', api);

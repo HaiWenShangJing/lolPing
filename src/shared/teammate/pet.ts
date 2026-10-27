@@ -1,10 +1,14 @@
 /** The desktop pet: which characters show, how a character's animation pack reads, and how one walks to a ping. */
 
-export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi'] as const;
+import { L2D_ANIMS } from './live2d';
+
+export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori'] as const;
 export type PetId = (typeof PET_IDS)[number];
 
 /** Which way each pack's art looks when unflipped, so running can face the way it goes. */
-export const PET_FACES: Record<PetId, 'left' | 'right'> = { whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right' };
+export const PET_FACES: Record<PetId, 'left' | 'right'> = {
+  whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right', hiyori: 'right',
+};
 
 /** One character's setting: whether it shows, and the animation it plays while it rests on the desktop. */
 export interface PetSetting {
@@ -27,6 +31,10 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
   airi: [
     'idle', 'celebrate', 'love', 'thanks', 'agree', 'confused', 'surprised', 'awkward', 'disagree', 'angry', 'sad', 'tired',
   ],
+  hiyori: [
+    'idle', 'sway', 'look', 'hum', 'giggle', 'shy', 'wink', 'celebrate', 'love', 'thanks', 'agree', 'confused',
+    'surprised', 'sad', 'angry', 'think', 'yawn', 'tired',
+  ],
 };
 
 export const DEFAULT_PETS: PetsSetting = {
@@ -34,6 +42,7 @@ export const DEFAULT_PETS: PetsSetting = {
   naiwa: { on: false, rest: PET_RESTS.naiwa[0] },
   shenshen: { on: false, rest: PET_RESTS.shenshen[0] },
   airi: { on: false, rest: PET_RESTS.airi[0] },
+  hiyori: { on: false, rest: PET_RESTS.hiyori[0] },
 };
 
 /** Reads the saved setting; anything unknown falls back to off and the character's default animation. */
@@ -58,9 +67,15 @@ export type PetPose = 'idle' | 'walk' | 'think' | 'happy' | 'held';
 export const PET_POSES: readonly PetPose[] = ['idle', 'walk', 'think', 'happy', 'held'];
 
 export interface PetAnim {
-  /** File names inside the pack's folder. */
+  /** File names inside the pack's folder; empty for a Live2D pack, whose animations are performances the page plays. */
   frames: string[];
   fps: number;
+}
+
+/** A Live2D pack's two files, paths inside its folder: the model's model3.json and Live2D's own Cubism Core script. */
+export interface Live2dPack {
+  model: string;
+  core: string;
 }
 
 export interface PetManifest {
@@ -70,11 +85,14 @@ export interface PetManifest {
   height: number;
   /** The five poses, and any other animation the pack has (a pet can rest in one). */
   anims: Record<string, PetAnim>;
+  /** Set when the pack is a Live2D model instead of frames. */
+  live2d?: Live2dPack;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const FRAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 const NAME_RE = /^[a-z0-9_]{1,32}$/;
+const PATH_RE = /^(?:[A-Za-z0-9_.-]{1,64}\/){0,3}[A-Za-z0-9_.-]{1,64}$/;
 const MAX_FRAMES = 128;
 const MAX_SIZE = 512;
 
@@ -86,9 +104,36 @@ function anim(raw: unknown): PetAnim | null {
   return { frames, fps };
 }
 
-/** Reads an animation pack's manifest.json; null unless every pose has frames, so a half-written pack shows nothing. */
+/** A path inside the pack's folder ending in `ext`: no way out of it, no hidden segments. */
+function packPath(v: unknown, ext: string): string | null {
+  if (typeof v !== 'string' || !PATH_RE.test(v) || !v.endsWith(ext)) return null;
+  return v.split('/').some((s) => s.startsWith('.')) ? null : v;
+}
+
+function live2dPack(raw: unknown): Live2dPack | null {
+  if (!isObj(raw)) return null;
+  const model = packPath(raw.model, '.model3.json');
+  const core = packPath(raw.core, '.js');
+  return model && core ? { model, core } : null;
+}
+
+/**
+ * Reads an animation pack's manifest.json; null unless every pose has frames, so a half-written pack shows nothing.
+ * A Live2D pack has no frames: it names its model and core, and every performance is an animation.
+ */
 export function parsePetManifest(raw: unknown): PetManifest | null {
-  if (!isObj(raw) || !isObj(raw.anims)) return null;
+  if (!isObj(raw)) return null;
+  const size = (v: unknown, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(MAX_SIZE, Math.max(32, Math.round(v))) : fallback;
+  const id = typeof raw.id === 'string' ? raw.id.slice(0, 32) : '';
+  if (raw.live2d !== undefined) {
+    const live2d = live2dPack(raw.live2d);
+    if (!live2d) return null;
+    const anims: Record<string, PetAnim> = {};
+    for (const name of L2D_ANIMS) anims[name] = { frames: [], fps: 1 };
+    return { id, width: size(raw.width, 200), height: size(raw.height, 320), anims, live2d };
+  }
+  if (!isObj(raw.anims)) return null;
   const anims: Record<string, PetAnim> = {};
   for (const pose of PET_POSES) {
     const a = anim(raw.anims[pose]);
@@ -99,13 +144,7 @@ export function parsePetManifest(raw: unknown): PetManifest | null {
     const a = NAME_RE.test(name) && !(name in anims) ? anim(v) : null;
     if (a) anims[name] = a;
   }
-  const size = (v: unknown, fallback: number): number =>
-    typeof v === 'number' && Number.isFinite(v) ? Math.min(MAX_SIZE, Math.max(32, Math.round(v))) : fallback;
-  return {
-    id: typeof raw.id === 'string' ? raw.id.slice(0, 32) : '',
-    width: size(raw.width, 128), height: size(raw.height, 128),
-    anims,
-  };
+  return { id, width: size(raw.width, 128), height: size(raw.height, 128), anims };
 }
 
 type Point = { x: number; y: number };

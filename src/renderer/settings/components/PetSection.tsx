@@ -13,7 +13,7 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
   const m = t.teammate.settings;
   const mate = s.teammate;
   const names: Record<PetId, string> = {
-    whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri,
+    whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri, hiyori: m.petHiyori,
   };
 
   return (
@@ -27,7 +27,8 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
           void update({ teammate: { ...mate, pets: { ...mate.pets, [id]: { ...pet, ...p } } } });
         return (
           <Fragment key={id}>
-            <SwitchRow icon={<Emoji24Regular />} title={names[id]} checked={pet.on} onChange={(on) => setPet({ on })} />
+            <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={id === 'hiyori' ? m.petHiyoriDesc : undefined}
+              checked={pet.on} onChange={(on) => setPet({ on })} />
             <SettingRow icon={null} title={m.petRest} description={m.petRestDesc} dim={!pet.on}>
               <Dropdown style={{ minWidth: 150 }} value={m.petAnims[pet.rest] ?? pet.rest} selectedOptions={[pet.rest]}
                 disabled={!pet.on} listbox={{ style: { maxHeight: 240 } }}

@@ -25,6 +25,10 @@ export const MOOD_ANIMS: Record<PetId, Partial<Record<Mood, string>>> = {
     happy: 'celebrate', love: 'love', thanks: 'thanks', agree: 'agree', playful: 'celebrate', confused: 'confused',
     surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'awkward', tired: 'tired',
   },
+  hiyori: {
+    happy: 'celebrate', love: 'love', thanks: 'thanks', agree: 'agree', playful: 'wink', confused: 'confused',
+    surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'shy', tired: 'tired',
+  },
 };
 
 export function parseMood(v: unknown): Mood | null {

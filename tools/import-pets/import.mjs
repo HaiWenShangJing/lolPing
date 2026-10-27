@@ -1,12 +1,14 @@
 // Downloads the art for the desktop pets into <settings folder>/pets/<id>/ and writes each manifest.json.
 // The art belongs to its authors and is not part of lolPing: run this once on your own computer.
-//   node tools/import-pets/import.mjs [--out <pets folder>] [whale] [naiwa] [shenshen] [airi]
+//   node tools/import-pets/import.mjs [--out <pets folder>] [whale] [naiwa] [shenshen] [airi] [hiyori]
 // `shenshen` turns transparent WebM clips into frames, so it needs ffmpeg (with libvpx-vp9 and libwebp) on the PATH or in
 // the FFMPEG variable; `airi` draws its frames with @napi-rs/canvas (`npm install --no-save @napi-rs/canvas` if it is missing).
+// `hiyori` is a Live2D model, so it brings the model and Live2D's Cubism Core (both Live2D Inc.'s, under their own terms);
+// `--out assets/pets` puts it where a build picks it up (that folder is ignored by git).
 import { execFile } from 'node:child_process';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 const RAW = 'https://raw.githubusercontent.com';
@@ -192,14 +194,64 @@ async function importAiri(root) {
   console.log(`airi: ${out}`);
 }
 
+// Hiyori, the Live2D Inc. sample model that moeru-ai/airi's web app shows (the zip is the one that app loads), and the
+// Cubism Core that draws any Live2D model. Neither may be redistributed with lolPing, so they are only downloaded here.
+const HIYORI = {
+  model: 'https://dist.ayaka.moe/live2d-models/hiyori_pro_zh.zip',
+  folder: 'hiyori_pro_zh/runtime/',
+  entry: 'hiyori_pro_t11.model3.json',
+  core: 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
+  width: 190,
+  height: 320,
+};
+
+const HIYORI_NOTICE = `# Hiyori (Live2D)
+
+Not part of lolPing: downloaded by tools/import-pets/import.mjs for your own use.
+
+- model/ is the "Hiyori Momose" sample model by Live2D Inc., under the Free Material License Agreement
+  (https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html). Free for individuals and small businesses;
+  larger companies may use it internally only. Do not redistribute it.
+- live2dcubismcore.min.js is the Live2D Cubism Core, under the Live2D Proprietary Software License
+  (https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html). Do not redistribute it with lolPing.
+`;
+
+async function importHiyori(root) {
+  let unzipSync;
+  try {
+    ({ unzipSync } = await import('fflate'));
+  } catch {
+    throw new Error('hiyori needs fflate: run `npm install` first');
+  }
+  const out = join(root, 'hiyori');
+  const files = unzipSync(new Uint8Array(await download(HIYORI.model)));
+  let entry = false;
+  for (const [name, data] of Object.entries(files)) {
+    if (!name.startsWith(HIYORI.folder) || name.endsWith('/')) continue;
+    const parts = name.slice(HIYORI.folder.length).split('/');
+    if (parts.some((p) => p === '' || p === '.' || p === '..')) throw new Error(`hiyori: unsafe path ${name}`);
+    const file = join(out, 'model', ...parts);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, data);
+    if (parts.join('/') === HIYORI.entry) entry = true;
+  }
+  if (!entry) throw new Error(`hiyori: ${HIYORI.entry} is not in the download`);
+  await writeFile(join(out, 'live2dcubismcore.min.js'), await download(HIYORI.core));
+  await writeFile(join(out, 'NOTICE.md'), HIYORI_NOTICE);
+  const live2d = { model: `model/${HIYORI.entry}`, core: 'live2dcubismcore.min.js' };
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ id: 'hiyori', width: HIYORI.width, height: HIYORI.height, live2d }, null, 2));
+  console.log(`hiyori: ${out}`);
+}
+
 const args = process.argv.slice(2);
 const outAt = args.indexOf('--out');
 const root = outAt >= 0 ? args[outAt + 1] : join(settingsDir(), 'pets');
 if (!root) throw new Error('--out needs a folder');
-const known = [...Object.keys(PETS), 'shenshen', 'airi'];
+const known = [...Object.keys(PETS), 'shenshen', 'airi', 'hiyori'];
 const wanted = args.filter((a, i) => known.includes(a) && i !== outAt + 1);
 for (const id of wanted.length > 0 ? wanted : known) {
   if (id === 'shenshen') await importShenshen(root);
   else if (id === 'airi') await importAiri(root);
+  else if (id === 'hiyori') await importHiyori(root);
   else await importPngPet(id, root);
 }

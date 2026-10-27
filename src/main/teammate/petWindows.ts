@@ -3,15 +3,18 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { APP_SCHEME } from '../appProtocol';
 import { IS_LINUX, IS_MAC, loadPage, preloadPath } from '../paths';
-import { PET_CH, parsePetDrag, type PetInit, type PetPoseMsg } from '../../shared/petIpc';
+import { PET_CH, parsePetDrag, parsePetHit, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg } from '../../shared/petIpc';
 import {
   keepInside, parsePetManifest, petIds, standBeside, standLeftOf, stepToward, DEFAULT_PETS, PET_FACES, type PetId, type PetManifest, type PetPose, type PetsSetting,
 } from '../../shared/teammate/pet';
 import { moodAnim, type Mood } from '../../shared/teammate/mood';
 import { glanceFlip, lifeStep, startLife, type Life } from '../../shared/teammate/life';
+import { gazeToward } from '../../shared/teammate/live2d';
 
 type Point = { x: number; y: number };
 
+const inside = (r: { x: number; y: number; width: number; height: number }, p: Point): boolean =>
+  p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
 /** "Quickly": a pet crosses a 1920 px display in about two seconds. */
 const RUN_SPEED = 900;
 const TICK_MS = 16;
@@ -19,6 +22,10 @@ const TICK_MS = 16;
 const STAGGER_MS = 160;
 /** How often a resting pet looks at the pointer and at the clock for its next little show. */
 const LIFE_TICK_MS = 1000;
+/** How often a Live2D pet's eyes are told where the pointer is. */
+const LOOK_TICK_MS = 50;
+/** Where a Live2D pet's head is, as a fraction of its window's height from the top; its eyes follow the pointer from there. */
+const HEAD_AT = 0.24;
 /** Space between pets standing at home, and from the display's corner. */
 const HOME_GAP = 12;
 /** How long pets stay by an ordinary ping before they walk home. */
@@ -46,6 +53,10 @@ interface Pet {
   drag: { pointer: Point; from: Point } | null;
   /** What it does at home when idle: its next little show, or the one it is playing. */
   life: Life;
+  /** Where a Live2D pet was last told to look. */
+  gaze: Point | null;
+  /** Whether a Live2D pet's window takes the mouse (the pointer is on the character) rather than passing it through. */
+  interactive: boolean;
 }
 
 /**
@@ -58,6 +69,7 @@ export class PetWindows {
   private loading = new Set<PetId>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private lifeTimer: ReturnType<typeof setInterval> | null = null;
+  private lookTimer: ReturnType<typeof setInterval> | null = null;
   private lifeOn = true;
   private lastTick = 0;
   private setting: PetsSetting = DEFAULT_PETS;
@@ -69,10 +81,13 @@ export class PetWindows {
   private visiting = false;
   /** How the answer that came in was said; null until one does. */
   private mood: Mood | null = null;
+  /** How long the answer that came in takes to say; a Live2D pet moves its mouth for it. */
+  private talkMs = 0;
   private captureExcluded = false;
 
   constructor(private readonly dir: string) {
     ipcMain.on(PET_CH.drag, this.onDrag);
+    ipcMain.on(PET_CH.hit, this.onHit);
   }
 
   /** Brings the shown pets in line with the setting; `life` lets resting pets play now and then and look at the pointer. */
@@ -94,6 +109,32 @@ export class PetWindows {
     for (const id of want) if (!this.pets.has(id) && !this.loading.has(id)) void this.create(id);
     if (want.length === 0) this.stopTimer();
     this.syncLife(want.length > 0);
+    this.syncLook();
+  }
+
+  /** Tells Live2D pets where the pointer is, for as long as there is one. */
+  private syncLook(): void {
+    if ([...this.pets.values()].some((p) => p.manifest.live2d)) {
+      this.lookTimer ??= setInterval(() => this.lookTick(), LOOK_TICK_MS);
+      return;
+    }
+    if (this.lookTimer === null) return;
+    clearInterval(this.lookTimer);
+    this.lookTimer = null;
+  }
+
+  private lookTick(): void {
+    const pointer = screen.getCursorScreenPoint();
+    for (const pet of this.pets.values()) {
+      if (!pet.manifest.live2d || pet.win.isDestroyed()) continue;
+      if (pet.interactive && !pet.drag && !inside(pet.win.getBounds(), pointer)) this.setInteractive(pet, false); // the page can't tell it left
+      const head = { x: pet.at.x + pet.manifest.width / 2, y: pet.at.y + pet.manifest.height * HEAD_AT };
+      const gaze = gazeToward(head, pointer);
+      if (pet.gaze && pet.gaze.x === gaze.x && pet.gaze.y === gaze.y) continue;
+      pet.gaze = gaze;
+      const msg: PetLookMsg = gaze;
+      pet.win.webContents.send(PET_CH.look, msg);
+    }
   }
 
   /** Runs the idle-life clock while there are pets to live it; stopping it puts the pets back to rest. */
@@ -123,7 +164,8 @@ export class PetWindows {
         pet.life = startLife(now, Math.random); // a show waits until the pet has been quiet at home a while
         continue;
       }
-      const flip = glanceFlip(pet.id, pet.at.x + pet.manifest.width / 2, pointer.x, pet.flip);
+      // A Live2D pet looks at the pointer with its eyes, so only a pack of frames turns round to face it.
+      const flip = pet.manifest.live2d ? pet.flip : glanceFlip(pet.id, pet.at.x + pet.manifest.width / 2, pointer.x, pet.flip);
       if (flip !== pet.flip) {
         pet.flip = flip;
         this.setPose(pet, pet.pose, pet.anim);
@@ -141,6 +183,7 @@ export class PetWindows {
     this.ping = ping;
     this.waiting = true;
     this.mood = null;
+    this.talkMs = 0;
     this.visiting = false;
     const all = [...this.pets.values()];
     const sizes = all.map((p) => p.manifest);
@@ -159,6 +202,7 @@ export class PetWindows {
     if (this.pets.size === 0) return;
     this.ping = ping;
     this.waiting = false;
+    this.talkMs = 0;
     this.visiting = true;
     const all = [...this.pets.values()];
     all.forEach((pet, i) => {
@@ -170,11 +214,19 @@ export class PetWindows {
     this.startTimer();
   }
 
-  /** The answer is in; `mood` is how the teammate said it, which each pet plays in its own animation. */
-  cheer(mood: Mood | null = null): void {
+  /**
+   * The answer is in; `mood` is how the teammate said it, which each pet plays in its own animation. `talkMs` is how long
+   * saying it takes: a Live2D pet moves its mouth that long.
+   */
+  cheer(mood: Mood | null = null, talkMs = 0): void {
     this.waiting = false;
     this.mood = mood;
-    for (const pet of this.pets.values()) if (pet.where === 'atPing') this.setPose(pet, 'happy', this.cheerAnim(pet));
+    this.talkMs = talkMs;
+    for (const pet of this.pets.values()) {
+      if (pet.where !== 'atPing') continue;
+      this.setPose(pet, 'happy', this.cheerAnim(pet));
+      this.speak(pet);
+    }
   }
 
   /** The ask is over, or was dropped: pets go home. */
@@ -182,6 +234,7 @@ export class PetWindows {
     this.ping = null;
     this.waiting = false;
     this.mood = null;
+    this.talkMs = 0;
     for (const pet of this.pets.values()) {
       if (pet.where === 'home') continue;
       pet.where = 'back';
@@ -198,9 +251,12 @@ export class PetWindows {
 
   destroy(): void {
     ipcMain.removeListener(PET_CH.drag, this.onDrag);
+    ipcMain.removeListener(PET_CH.hit, this.onHit);
     this.stopTimer();
     if (this.lifeTimer !== null) clearInterval(this.lifeTimer);
     this.lifeTimer = null;
+    if (this.lookTimer !== null) clearInterval(this.lookTimer);
+    this.lookTimer = null;
     for (const pet of this.pets.values()) if (!pet.win.isDestroyed()) pet.win.destroy();
     this.pets.clear();
   }
@@ -244,16 +300,21 @@ export class PetWindows {
       if (this.captureExcluded) win.setContentProtection(true);
       if (IS_LINUX) win.setVisibleOnAllWorkspaces(true);
       if (IS_MAC) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+      // A Live2D pet is as big as its window but not as its art: clicks pass through until the page says the pointer is on the character.
+      if (manifest.live2d && !IS_LINUX) win.setIgnoreMouseEvents(true, { forward: true });
       const pet: Pet = {
         id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null,
-        life: startLife(Date.now(), Math.random),
+        life: startLife(Date.now(), Math.random), gaze: null, interactive: false,
       };
       const init: PetInit = { id, base: `${APP_SCHEME}://pets/${id}`, manifest, rest };
       win.webContents.on('did-finish-load', () => {
-        if (!win.isDestroyed()) win.webContents.send(PET_CH.init, init);
+        if (win.isDestroyed()) return;
+        win.webContents.send(PET_CH.init, init);
+        pet.gaze = null; // what was sent while the page was loading went nowhere
       });
       win.once('ready-to-show', () => win.showInactive());
       this.pets.set(id, pet);
+      this.syncLook();
       await loadPage(win, 'pet');
       // An ask that began while this pet was loading sends it now.
       if (this.ping) this.goTo(this.ping);
@@ -323,7 +384,10 @@ export class PetWindows {
         pet.flip = false;
         if (this.waiting) this.setPose(pet, 'think');
         else if (this.visiting) this.setPose(pet, 'idle');
-        else this.setPose(pet, 'happy', this.cheerAnim(pet));
+        else {
+          this.setPose(pet, 'happy', this.cheerAnim(pet));
+          this.speak(pet);
+        }
       } else {
         pet.where = 'home';
         pet.flip = false;
@@ -333,8 +397,33 @@ export class PetWindows {
     if (!moving) this.stopTimer();
   }
 
+  /** A Live2D pet at the ping moves its mouth for the line it is saying. */
+  private speak(pet: Pet): void {
+    if (!pet.manifest.live2d || this.talkMs <= 0 || pet.win.isDestroyed()) return;
+    const msg: PetTalkMsg = { ms: this.talkMs };
+    pet.win.webContents.send(PET_CH.talk, msg);
+  }
+
+  private petOf(senderId: number): Pet | undefined {
+    return [...this.pets.values()].find((p) => !p.win.isDestroyed() && p.win.webContents.id === senderId);
+  }
+
+  private readonly onHit = (event: IpcMainEvent, raw: unknown): void => {
+    const pet = this.petOf(event.sender.id);
+    const msg = parsePetHit(raw);
+    if (pet && msg) this.setInteractive(pet, msg.over);
+  };
+
+  /** A Live2D window takes the mouse only while the pointer is on the character; everywhere else it lets the mouse through. */
+  private setInteractive(pet: Pet, on: boolean): void {
+    if (IS_LINUX || pet.interactive === on || pet.win.isDestroyed()) return;
+    pet.interactive = on;
+    if (on) pet.win.setIgnoreMouseEvents(false);
+    else pet.win.setIgnoreMouseEvents(true, { forward: true });
+  }
+
   private readonly onDrag = (event: IpcMainEvent, raw: unknown): void => {
-    const pet = [...this.pets.values()].find((p) => !p.win.isDestroyed() && p.win.webContents.id === event.sender.id);
+    const pet = this.petOf(event.sender.id);
     const msg = parsePetDrag(raw);
     if (!pet || !msg) return;
     if (msg.phase === 'start') {

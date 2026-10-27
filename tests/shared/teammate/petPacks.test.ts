@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { parsePetManifest, PET_IDS, PET_POSES, PET_RESTS } from '../../../src/shared/teammate/pet';
 
 const root = join(__dirname, '..', '..', '..', 'assets', 'pets');
+// Live2D Inc.'s files can't be committed: a pack that is downloaded is checked only where tools/import-pets has put it.
+const downloaded = new Set<string>(['hiyori']);
+const packs = PET_IDS.filter((id) => !downloaded.has(id) || existsSync(join(root, id, 'manifest.json')));
 
-describe.each(PET_IDS)('bundled %s pack', (id) => {
+describe.each(packs)('bundled %s pack', (id) => {
   const manifest = parsePetManifest(JSON.parse(readFileSync(join(root, id, 'manifest.json'), 'utf8')));
 
   it('has a valid manifest', () => {
@@ -19,5 +22,10 @@ describe.each(PET_IDS)('bundled %s pack', (id) => {
   it('has every frame file it lists', () => {
     const missing = Object.values(manifest?.anims ?? {}).flatMap((a) => a.frames).filter((f) => !existsSync(join(root, id, f)));
     expect(missing).toEqual([]);
+  });
+
+  it('has the model and the core of a Live2D pack', () => {
+    const files = manifest?.live2d ? [manifest.live2d.model, manifest.live2d.core] : [];
+    expect(files.filter((f) => !existsSync(join(root, id, f)))).toEqual([]);
   });
 });

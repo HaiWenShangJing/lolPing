@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { L2D_ANIMS } from '../../../src/shared/teammate/live2d';
 import {
   keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside, standLeftOf, stepToward,
 } from '../../../src/shared/teammate/pet';
@@ -14,12 +15,13 @@ describe('petIds', () => {
     const on = (...ids: string[]) => ({
       whale: { on: ids.includes('whale'), rest: 'idle' }, naiwa: { on: ids.includes('naiwa'), rest: 'sit' },
       shenshen: { on: ids.includes('shenshen'), rest: 'idle' }, airi: { on: ids.includes('airi'), rest: 'idle' },
+      hiyori: { on: ids.includes('hiyori'), rest: 'idle' },
     });
     expect(petIds(on())).toEqual([]);
     expect(petIds(on('whale'))).toEqual(['whale']);
     expect(petIds(on('naiwa'))).toEqual(['naiwa']);
     expect(petIds(on('airi', 'whale'))).toEqual(['whale', 'airi']);
-    expect(petIds(on('whale', 'naiwa', 'shenshen', 'airi'))).toEqual(['whale', 'naiwa', 'shenshen', 'airi']);
+    expect(petIds(on('whale', 'naiwa', 'shenshen', 'airi', 'hiyori'))).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
   });
 });
 
@@ -27,19 +29,20 @@ describe('normalizePets', () => {
   it('defaults to all off, resting in the first animation', () => {
     expect(normalizePets(undefined)).toEqual({
       whale: { on: false, rest: 'idle' }, naiwa: { on: false, rest: 'sit' },
-      shenshen: { on: false, rest: 'idle' }, airi: { on: false, rest: 'idle' },
+      shenshen: { on: false, rest: 'idle' }, airi: { on: false, rest: 'idle' }, hiyori: { on: false, rest: 'idle' },
     });
   });
 
   it('keeps a known animation and drops an unknown one', () => {
     const p = normalizePets({
       whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' },
-      shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' },
+      shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' }, hiyori: { on: true, rest: 'hum' },
     });
     expect(p.whale).toEqual({ on: true, rest: 'dance' });
     expect(p.naiwa).toEqual({ on: true, rest: 'sit' });
     expect(p.shenshen).toEqual({ on: true, rest: 'dance' });
     expect(p.airi).toEqual({ on: true, rest: 'idle' });
+    expect(p.hiyori).toEqual({ on: true, rest: 'hum' });
   });
 
   it('only turns a character on for true', () => {
@@ -76,6 +79,47 @@ describe('parsePetManifest', () => {
     expect(m?.width).toBe(512);
     expect(m?.height).toBe(32);
     expect(m?.anims.idle.fps).toBe(8);
+  });
+});
+
+describe('parsePetManifest for a Live2D pack', () => {
+  const live = (over: Record<string, unknown> = {}) => ({
+    id: 'hiyori', width: 190, height: 320,
+    live2d: { model: 'model/hiyori_pro_t11.model3.json', core: 'live2dcubismcore.min.js' },
+    ...over,
+  });
+
+  it('reads a model and a core, and has every performance as an animation without frames', () => {
+    const m = parsePetManifest(live());
+    expect(m?.live2d).toEqual({ model: 'model/hiyori_pro_t11.model3.json', core: 'live2dcubismcore.min.js' });
+    expect(Object.keys(m?.anims ?? {})).toEqual([...L2D_ANIMS]);
+    for (const pose of PET_POSES) expect(m?.anims[pose]).toBeDefined();
+    expect(m?.anims.think.frames).toEqual([]);
+  });
+
+  it('defaults to a tall window and keeps a given one within limits', () => {
+    const m = parsePetManifest(live({ width: undefined, height: undefined }));
+    expect([m?.width, m?.height]).toEqual([200, 320]);
+    expect(parsePetManifest(live({ width: 9000 }))?.width).toBe(512);
+  });
+
+  it('refuses paths that could leave the pack folder, or that are not what they claim to be', () => {
+    const at = (live2d: Record<string, unknown>) => parsePetManifest(live({ live2d }));
+    const ok = { model: 'a.model3.json', core: 'core.js' };
+    expect(at(ok)).not.toBeNull();
+    expect(at({ ...ok, model: '../a.model3.json' })).toBeNull();
+    expect(at({ ...ok, model: 'a/../b.model3.json' })).toBeNull();
+    expect(at({ ...ok, model: '/etc/a.model3.json' })).toBeNull();
+    expect(at({ ...ok, model: 'a.json' })).toBeNull();
+    expect(at({ ...ok, core: 'https://x.test/core.js' })).toBeNull();
+    expect(at({ ...ok, core: 'core.exe' })).toBeNull();
+    expect(at({ ...ok, core: '..\\core.js' })).toBeNull();
+    expect(at({ model: ok.model })).toBeNull();
+  });
+
+  it('refuses a live2d value that is not an object', () => {
+    expect(parsePetManifest(live({ live2d: 'model.model3.json' }))).toBeNull();
+    expect(parsePetManifest(live({ live2d: null }))).toBeNull();
   });
 });
 
