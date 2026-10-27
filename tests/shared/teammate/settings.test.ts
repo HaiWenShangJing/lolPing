@@ -203,6 +203,17 @@ describe('normalizeTeammate', () => {
     expect(normalizeTeammate({ agentsCanPing: true }, win).agentsCanDrivePets).toBe(false);
   });
 
+  it('leaves the pets from roaming on their own until the user says so, every 15 minutes', () => {
+    const old = normalizeTeammate({ tagName: 'Old' }, win);
+    expect(old.petRoam).toBe(false);
+    expect(old.petRoamMin).toBe(15);
+    expect(normalizeTeammate({ petRoam: true }, win).petRoam).toBe(true);
+    expect(normalizeTeammate({ petRoam: 'yes' }, win).petRoam).toBe(false);
+    expect(normalizeTeammate({ petRoamMin: 30 }, win).petRoamMin).toBe(30);
+    expect(normalizeTeammate({ petRoamMin: 1 }, win).petRoamMin).toBe(5);
+    expect(normalizeTeammate({ petRoamMin: 'soon' }, win).petRoamMin).toBe(15);
+  });
+
   it('keeps agent permission keys but never one for a shell tool', () => {
     const t = normalizeTeammate({
       profiles: [validProfile, validAgent],

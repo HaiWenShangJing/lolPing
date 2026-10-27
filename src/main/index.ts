@@ -4,7 +4,7 @@ import {
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes, randomInt } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { resolveLang, strings, type Strings } from '../shared/i18n';
@@ -65,6 +65,7 @@ import { installedEditors } from './teammate/editors';
 import { fetchWebPdf, pdfAssetDirs, readDocument, readPdfBuffer } from './teammate/files';
 import { HistoryStore } from './teammate/historyStore';
 import { MateWindows, overShownWindow } from './teammate/mateWindows';
+import { PetRoam } from './teammate/petRoam';
 import { PetWindows } from './teammate/petWindows';
 import { DEFAULT_PETS } from '../shared/teammate/pet';
 import { createAdapter } from './teammate/providers';
@@ -153,6 +154,8 @@ interface Mate {
   /** Fades the teammate's marks when the page under them moves. */
   stale: StaleWatcher;
   agents: AgentRunner;
+  /** Starts the user's agent now and then to do something with the pets, when they let it. */
+  roam: PetRoam;
   /** lolPing's end of the MCP bridge once it listens; null when it couldn't, and then agent asks ask for a restart. */
   mcp: Promise<BridgeServer | null>;
 }
@@ -930,18 +933,17 @@ function start(): void {
     const userData = app.getPath('userData');
     /** The bridge's pipe once lolPing listens on it; agents run only then. */
     let pipe: string | null = null;
+    const agentBridge = (ask: string): ReturnType<typeof bridgeCommand> | null => {
+      const at = pipe;
+      // index.js and bridge.js are built side by side into out/main.
+      return at === null ? null : bridgeCommand({
+        execPath: process.execPath, bridgeJs: join(__dirname, 'bridge.js'), pipe: at, dataDir: userData, ask,
+      });
+    };
     const controller = new AskController({
       agents: {
         runner: agents,
-        bridge: {
-          command: (ask) => {
-            const at = pipe;
-            // index.js and bridge.js are built side by side into out/main.
-            return at === null ? null : bridgeCommand({
-              execPath: process.execPath, bridgeJs: join(__dirname, 'bridge.js'), pipe: at, dataDir: userData, ask,
-            });
-          },
-        },
+        bridge: { command: agentBridge },
         env: userEnv,
         home: () => app.getPath('home'),
         platform: PLATFORM,
@@ -974,11 +976,34 @@ function start(): void {
       // Not while lolPing is paused, nor once the teammate is going down (its bridge stays up a moment longer).
       enabled: () => enabled && mate !== null,
     });
+    const roam = new PetRoam({
+      settings: () => settings,
+      enabled: () => enabled && mate !== null,
+      busy: () => controller.running,
+      lang: mateLang,
+      now: () => new Date(),
+      pet: pets,
+      runner: agents,
+      bridge: agentBridge,
+      env: userEnv,
+      tempDir: () => tempDir,
+      files: {
+        makeDir: async (p) => {
+          await mkdir(p, { recursive: true });
+        },
+        removeDir: (p) => rm(p, { recursive: true, force: true }),
+      },
+      after: (ms, fn) => {
+        const timer = setTimeout(fn, ms);
+        return () => clearTimeout(timer);
+      },
+      random: Math.random,
+    });
     // The pipe may be taken, possibly by another user's process: then nothing of an agent's goes through it.
     const mcp = (async (): Promise<BridgeServer> => {
       const { path, privateDir } = bridgeLocation(PLATFORM, userData, userInfo().username);
       const server = new BridgeServer({
-        path, privateDir, tokenFile: join(userData, 'mcp-token'), handler: bridgeHandler(controller),
+        path, privateDir, tokenFile: join(userData, 'mcp-token'), handler: bridgeHandler(controller, roam),
         random: randomBytes, writeToken: writeTokenFile,
       });
       await server.start();
@@ -1007,7 +1032,7 @@ function start(): void {
     controller.on('state', pushMateTray);
     windows.on('action', onMateAction);
     windows.on('dragged', (view: MateView) => controller.onDragged(view));
-    return { secrets, history, usage, context, windows, actions, controller, stale, agents, mcp };
+    return { secrets, history, usage, context, windows, actions, controller, stale, agents, roam, mcp };
   };
   /** Takes the teammate down; settles once its context helper has exited and its usage is on disk. */
   const stopMate = (): Promise<unknown> => {
@@ -1016,6 +1041,7 @@ function start(): void {
     closeWords();
     gesture.cancel(); // while `mate` is still set, so a read made for held spots stops too
     mate = null;
+    m.roam.stop();
     m.controller.cancel('user');
     m.agents.killAll(); // also on quitting: no agent, nor anything it started, outlives lolPing
     m.controller.removeAllListeners();
@@ -1056,6 +1082,7 @@ function start(): void {
         if (mateStopping === stopping) mateStopping = null;
       });
     }
+    mate?.roam.sync();
     pushMateTray();
   };
   /** Opens the words box at the last spot; the ask goes with every spot when the words are sent. */

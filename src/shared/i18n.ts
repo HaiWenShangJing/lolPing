@@ -150,6 +150,8 @@ interface MateAskText {
     /** The working folder (a fixed one, or where the thread's session was) is gone. */
     noFolder: (name: string) => string;
   };
+  /** The pets' line when roaming is on but there is no agent profile to start. */
+  roamNoAgent: string;
   /** A spot refused while the ask key is held: a fifth one, or one on another display than the first. */
   spotsFull: string;
   spotsDisplay: string;
@@ -203,6 +205,7 @@ const enMateAsk: MateAskText = {
     addLolPing: (where) => ` Check that lolPing is in ${where ?? 'its MCP settings'}.`,
     noFolder: (name) => `The folder ${name} isn’t there any more.`,
   },
+  roamNoAgent: 'To wander on my own I need a coding agent. Add one in Settings → Teammate.',
   spotsFull: 'Up to 4 spots per ask',
   spotsDisplay: 'Spots in one ask stay on one screen',
   spots: (n) => `${n} spots`,
@@ -398,6 +401,11 @@ const enMateSettings = {
   petLifeDesc: 'Resting pets now and then play one of their animations and turn to look at your pointer.',
   petAgents: 'Let agents drive the pets',
   petAgentsDesc: 'A coding agent connected through lolPing\'s MCP server (Claude Code, Copilot CLI and others) can make the pets say a line, run somewhere on your screen and play animations. Nothing is sent anywhere, and your own pings come first. Restart the agent after turning this on, so it sees the new tools.',
+  petRoam: 'Let the AI roam the pets on its own',
+  petRoamDesc: 'Now and then lolPing starts your coding agent in the background (the default profile if it is an agent, else the first agent profile in Teammate) and lets it make the pets say something, walk around or play an animation. It is sent the time of day and nothing from your screen or files. Each visit costs a little of that agent\'s own quota, and your own pings come first. Needs the AI teammate on.',
+  petRoamEvery: 'How often',
+  petRoamEveryDesc: 'The gap between visits, give or take a fifth. The first one comes a few seconds after you turn this on.',
+  petRoamEveryOption: (min: number) => `Every ${min} min`,
   petRest: 'Resting animation',
   petRestDesc: 'What it does while waiting on the desktop.',
   petAnims: {
@@ -1288,6 +1296,7 @@ const zh: Strings = {
         noFolder: (name) => `文件夹 ${name} 已经不在了。`,
         addLolPing: (where) => (where === null ? '请检查它的 MCP 设置里是否加了 lolPing。' : `请检查 ${where} 里是否加了 lolPing。`),
       },
+      roamNoAgent: '要自己溜达，我需要一个编程代理。请在“设置 → 队友”里添加一个。',
       spotsFull: '一次最多 4 处',
       spotsDisplay: '一次提问的几处要在同一块屏幕上',
       spots: (n) => `${n} 处`,
@@ -1478,6 +1487,11 @@ const zh: Strings = {
       petLifeDesc: '待机的桌宠偶尔会做个小动作，并转头看向你的鼠标。',
       petAgents: '允许代理驱动桌宠',
       petAgentsDesc: '通过 lolPing 的 MCP 服务连接的编程代理（Claude Code、Copilot CLI 等）可以让桌宠说话、在屏幕上跑到指定位置并做动作。不会向外发送任何内容，你自己的信号永远优先。开启后请重启代理，它才能看到新工具。',
+      petRoam: '让 AI 自己带桌宠溜达',
+      petRoamDesc: '每隔一段时间，lolPing 会在后台启动你的编程代理（默认配置是代理就用它，否则用“队友”里的第一个代理配置），让它让桌宠说句话、四处走走或做个动作。发给它的只有当前的时间段，不含屏幕或文件内容。每次会消耗一点该代理自己的额度，你自己的信号永远优先。需要先开启 AI 队友。',
+      petRoamEvery: '频率',
+      petRoamEveryDesc: '两次之间的间隔，上下浮动五分之一。开启后几秒内会先来一次。',
+      petRoamEveryOption: (min: number) => `每 ${min} 分钟`,
       petRest: '待机动作',
       petRestDesc: '待在桌面上时做的动作。',
       petAnims: {

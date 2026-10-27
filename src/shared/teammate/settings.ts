@@ -6,6 +6,7 @@ import type { EmoteTriggerKey, NamedTrigger, TriggerKey } from '../settings';
 import { AGENT_PRESET_IDS, type AgentPresetId } from './agents';
 import { agentAllowed, allowed, parsePermissionKey } from './doRules';
 import { DEFAULT_PETS, normalizePets, type PetsSetting } from './pet';
+import { ROAM_DEFAULT_MINUTES, roamMinutes } from './petRoam';
 import { PROVIDER_IDS, type ProviderId } from './providers';
 
 /** The ask key: a trigger key of its own, or the ping key ('same'). */
@@ -84,6 +85,10 @@ export interface TeammateSettings {
   petLife: boolean;
   /** Lets a coding agent make the desktop pets speak, walk and play through lolPing's bridge. Off until the user turns it on. */
   agentsCanDrivePets: boolean;
+  /** Now and then lolPing starts the user's coding agent in the background and lets it do something with the pets. Off until the user turns it on. */
+  petRoam: boolean;
+  /** Minutes between those visits, give or take a fifth. */
+  petRoamMin: number;
   /** The teammate may save short notes about the user and reads them back in later asks. Off until the user turns it on. */
   memory: boolean;
   /** keepDays null keeps threads until the thread cap removes them. */
@@ -115,6 +120,8 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   pets: DEFAULT_PETS,
   petLife: true,
   agentsCanDrivePets: false,
+  petRoam: false,
+  petRoamMin: ROAM_DEFAULT_MINUTES,
   memory: false,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
@@ -326,6 +333,8 @@ export function normalizeTeammate(
     pets: normalizePets(r.pets),
     petLife: bool(r.petLife, DEFAULT_TEAMMATE.petLife),
     agentsCanDrivePets: bool(r.agentsCanDrivePets, DEFAULT_TEAMMATE.agentsCanDrivePets),
+    petRoam: bool(r.petRoam, DEFAULT_TEAMMATE.petRoam),
+    petRoamMin: roamMinutes(r.petRoamMin),
     memory: bool(r.memory, DEFAULT_TEAMMATE.memory),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),

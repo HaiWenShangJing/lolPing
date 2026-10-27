@@ -2,6 +2,7 @@ import { Dropdown, Option } from '@fluentui/react-components';
 import { Emoji24Regular } from '@fluentui/react-icons';
 import { Fragment } from 'react';
 import { PET_IDS, PET_RESTS, type PetId, type PetSetting } from '../../../shared/teammate/pet';
+import { ROAM_CHOICES } from '../../../shared/teammate/petRoam';
 import { useText } from '../text';
 import type { Update } from '../useAppState';
 import { SettingRow, SwitchRow } from './rows';
@@ -23,6 +24,21 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
         onChange={(petLife) => void update({ teammate: { ...mate, petLife } })} />
       <SwitchRow icon={<Emoji24Regular />} title={m.petAgents} description={m.petAgentsDesc} checked={mate.agentsCanDrivePets}
         onChange={(agentsCanDrivePets) => void update({ teammate: { ...mate, agentsCanDrivePets } })} />
+      <SwitchRow icon={<Emoji24Regular />} title={m.petRoam} description={m.petRoamDesc} checked={mate.petRoam}
+        onChange={(petRoam) => void update({ teammate: { ...mate, petRoam } })} />
+      <SettingRow icon={null} title={m.petRoamEvery} description={m.petRoamEveryDesc} dim={!mate.petRoam}>
+        <Dropdown style={{ minWidth: 150 }} value={m.petRoamEveryOption(mate.petRoamMin)}
+          selectedOptions={[String(mate.petRoamMin)]} disabled={!mate.petRoam}
+          positioning={{ position: 'above', align: 'end', autoSize: 'height', fallbackPositions: ['below-end'] }}
+          onOptionSelect={(_, d) => {
+            const petRoamMin = ROAM_CHOICES.find((c) => String(c) === d.optionValue);
+            if (petRoamMin) void update({ teammate: { ...mate, petRoamMin } });
+          }}>
+          {ROAM_CHOICES.map((c) => (
+            <Option key={c} value={String(c)} text={m.petRoamEveryOption(c)}>{m.petRoamEveryOption(c)}</Option>
+          ))}
+        </Dropdown>
+      </SettingRow>
       {PET_IDS.map((id) => {
         const pet = mate.pets[id];
         const setPet = (p: Partial<PetSetting>) =>

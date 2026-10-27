@@ -1,3 +1,4 @@
+import { PET_TOOLS } from './petControl';
 import { posixQuote, tomlKey, tomlString } from './quote';
 
 export const AGENT_PRESET_IDS = [
@@ -173,8 +174,8 @@ function dshPatch(s: AgentRunSpec): string {
 }
 
 // lolPing's own actions ask the user in lolPing (a copy only fills the clipboard), so Claude Code's card would be a
-// second one. Never consent: that is the prompt itself.
-const CLAUDE_TOOLS = [...DISPLAY_TOOLS, 'look', 'read_file', 'copy', 'paste', 'fill', 'event', 'open', 'remember']
+// second one. Never consent: that is the prompt itself. The pet tools are for a pet visit (lolPing offers them to no ask).
+const CLAUDE_TOOLS = [...DISPLAY_TOOLS, 'look', 'read_file', 'copy', 'paste', 'fill', 'event', 'open', 'remember', ...PET_TOOLS]
   .map((t) => `mcp__lolping__${t}`).join(',');
 
 function claudeParse(line: string): AgentParsed {

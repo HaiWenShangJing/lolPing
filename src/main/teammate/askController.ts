@@ -44,6 +44,7 @@ import type { Doc } from './files';
 import { FILE_READ_LIMIT, gather, readFileTool, type GatherDeps, type Gathered, type UsedItem } from './gather';
 import type { HistoryStore } from './historyStore';
 import type { MateWindows } from './mateWindows';
+import type { PetRoam } from './petRoam';
 import type { PetWindows } from './petWindows';
 import { agentAsk, aimsExactly, canLook, firstTurn, systemPrompt, type AskContext } from './prompt';
 import {
@@ -354,18 +355,25 @@ const bridgeContent = (p: Part): BridgeContent => ('text' in p
   : { image: { mime: p.image.mime, data: p.image.data.toString('base64') } });
 
 /**
- * lolPing's end of the bridge: an agent started for an ask lists and calls that ask's tools, and any other client is
- * an agent pinging the user unprompted. A connection's hello isn't a receipt, since dsh opens a probe connection first.
+ * lolPing's end of the bridge: an agent started for an ask lists and calls that ask's tools, an agent started for a pet
+ * visit gets the pet tools, and any other client is an agent pinging the user unprompted. A connection's hello isn't a
+ * receipt, since dsh opens a probe connection first.
  */
 export function bridgeHandler(
   c: Pick<AskController, 'agentTools' | 'agentCall' | 'visitorTools' | 'visitorCall'>,
+  roam?: Pick<PetRoam, 'tools' | 'call'>,
 ): BridgeHandler {
   return {
     hello: () => undefined,
-    list: (s) => (s.ask === null ? c.visitorTools() : c.agentTools(s.ask) ?? []),
-    call: async (s, name, args) => (s.ask === null
-      ? c.visitorCall(s.client, name, args)
-      : c.agentCall(s.ask, name, args)),
+    list: (s) => {
+      if (s.ask === null) return c.visitorTools();
+      return roam?.tools(s.ask) ?? c.agentTools(s.ask) ?? [];
+    },
+    call: async (s, name, args) => {
+      if (s.ask === null) return c.visitorCall(s.client, name, args);
+      if (roam?.tools(s.ask)) return roam.call(s.ask, name, args);
+      return c.agentCall(s.ask, name, args);
+    },
   };
 }
 
