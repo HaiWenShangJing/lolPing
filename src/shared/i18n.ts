@@ -396,6 +396,8 @@ const enMateSettings = {
   petHiyoriDesc: 'A Live2D character that follows your pointer with her eyes and speaks when the teammate answers. Her files are downloaded separately (see Desktop pets in the README), so she only appears once they are in place.',
   petLife: 'Idle life',
   petLifeDesc: 'Resting pets now and then play one of their animations and turn to look at your pointer.',
+  petAgents: 'Let agents drive the pets',
+  petAgentsDesc: 'A coding agent connected through lolPing\'s MCP server (Claude Code, Copilot CLI and others) can make the pets say a line, run somewhere on your screen and play animations. Nothing is sent anywhere, and your own pings come first. Restart the agent after turning this on, so it sees the new tools.',
   petRest: 'Resting animation',
   petRestDesc: 'What it does while waiting on the desktop.',
   petAnims: {
@@ -1474,6 +1476,8 @@ const zh: Strings = {
       petHiyoriDesc: 'Live2D 角色，眼睛会跟着你的鼠标转，队友回答时还会开口说话。她的文件需要另行下载（见 README 的“桌宠”一节），放好之后才会出现。',
       petLife: '待机小动作',
       petLifeDesc: '待机的桌宠偶尔会做个小动作，并转头看向你的鼠标。',
+      petAgents: '允许代理驱动桌宠',
+      petAgentsDesc: '通过 lolPing 的 MCP 服务连接的编程代理（Claude Code、Copilot CLI 等）可以让桌宠说话、在屏幕上跑到指定位置并做动作。不会向外发送任何内容，你自己的信号永远优先。开启后请重启代理，它才能看到新工具。',
       petRest: '待机动作',
       petRestDesc: '待在桌面上时做的动作。',
       petAnims: {

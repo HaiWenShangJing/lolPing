@@ -26,6 +26,7 @@ import {
 } from '../../shared/teammate/settings';
 import { threadAction } from '../../shared/teammate/threads';
 import { lastMood } from '../../shared/teammate/mood';
+import { isPetTool, parsePetCall, petToolDefs } from '../../shared/teammate/petControl';
 import { talkMs } from '../../shared/teammate/live2d';
 import { rememberReply } from '../../shared/teammate/memory';
 import {
@@ -72,7 +73,7 @@ export interface AskDeps {
     'showBubble' | 'updateBubble' | 'hideBubble' | 'hideNow' | 'showCard' | 'updateCard' | 'hideCard' | 'placeOf'
     | 'setCaptureExcluded'>;
   /** The desktop pet, when there is one: it runs to the ask's ping, thinks while the answer comes and is happy after. */
-  pet?: Pick<PetWindows, 'goTo' | 'cheer' | 'release' | 'setCaptureExcluded'>;
+  pet?: Pick<PetWindows, 'goTo' | 'cheer' | 'release' | 'setCaptureExcluded' | 'drive'>;
   history: Pick<HistoryStore, 'append' | 'current' | 'amend'>;
   /** The folder each ask's own capture folder goes in. */
   tempDir: () => string;
@@ -139,6 +140,12 @@ const AGENTS_OFF: BridgeContent[] = [{
   text: 'The user hasn\'t let agents ping them. They can turn on Let agents ping me in lolPing\'s Teammate settings.',
 }];
 const PAUSED: BridgeContent[] = [{ text: 'lolPing is paused.' }];
+const PETS_OFF: BridgeContent[] = [{
+  text: 'The user hasn\'t let agents drive the desktop pets. They can turn on Let agents drive the pets in lolPing\'s '
+    + 'Desktop pets settings.',
+}];
+const NO_PET_WINDOWS: BridgeContent[] = [{ text: 'This computer has no desktop pets.' }];
+const PET_ARGS: BridgeContent[] = [{ text: 'Ignored: the arguments were not valid.' }];
 const BUSY: BridgeContent[] = [{ text: 'lolPing is busy; try again in a moment.' }];
 const TOO_MANY: BridgeContent[] = [{ text: 'Too many pings.' }];
 /** Unprompted calls a second from one client, and from all of them (under this key). */
@@ -696,9 +703,24 @@ export class AskController extends EventEmitter {
     return { content: [{ text: JSON.stringify(reply) }], isError: false };
   }
 
-  /** What an agent may call without an ask, when the user lets agents ping them. */
+  /** What an agent may call without an ask: the display tools when the user lets agents ping them, plus the pet tools when they let them drive the pets. */
   visitorTools(): ToolDef[] {
-    return visitorToolDefs(this.deps.settings().teammate.emotes);
+    const t = this.deps.settings().teammate;
+    return [...visitorToolDefs(t.emotes), ...(t.agentsCanDrivePets ? petToolDefs() : [])];
+  }
+
+  /** An agent drives the desktop pets (their own switch, apart from pinging): refused while paused or when it isn't let. */
+  private petCall(client: { name: string }, name: string, args: unknown): { content: BridgeContent[]; isError: boolean } {
+    if (!this.deps.enabled()) return { content: PAUSED, isError: true };
+    if (!this.deps.settings().teammate.agentsCanDrivePets) return { content: PETS_OFF, isError: true };
+    if (!this.visitorRate.allow(client.name, VISITOR_RATE) || !this.visitorRate.allow(ALL_VISITORS, VISITOR_RATE_ALL)) {
+      return { content: TOO_MANY, isError: true };
+    }
+    const cmd = parsePetCall(name, args);
+    if (!cmd) return { content: PET_ARGS, isError: true };
+    if (!this.deps.pet) return { content: NO_PET_WINDOWS, isError: true };
+    const done = this.deps.pet.drive(cmd, this.visitorTag(client.name).name);
+    return { content: [{ text: done.text }], isError: !done.ok };
   }
 
   /**
@@ -708,6 +730,7 @@ export class AskController extends EventEmitter {
   async visitorCall(
     client: { name: string }, name: string, args: unknown,
   ): Promise<{ content: BridgeContent[]; isError: boolean }> {
+    if (isPetTool(name)) return this.petCall(client, name, args);
     if (!this.deps.enabled()) return { content: PAUSED, isError: true };
     if (!this.deps.settings().teammate.agentsCanPing) return { content: AGENTS_OFF, isError: true };
     if (this.busy()) return { content: BUSY, isError: true };
@@ -721,7 +744,8 @@ export class AskController extends EventEmitter {
     // lolPing picks the place; a position the agent sends anyway is ignored (the parser wants one).
     const given = typeof args === 'object' && args !== null && !Array.isArray(args) ? { ...args, x: 0, y: 0 } : args;
     const raw: RawCall = { id: 'visitor', name, args: JSON.stringify(given ?? {}) };
-    const step = await this.play(run, [raw], new Set(this.visitorTools().map((d) => d.name)), false);
+    const allowed = new Set(visitorToolDefs(this.deps.settings().teammate.emotes).map((d) => d.name));
+    const step = await this.play(run, [raw], allowed, false);
     const content = step.results[0]?.content ?? DONE;
     const refused = REFUSED.has(content);
     if (!refused) {

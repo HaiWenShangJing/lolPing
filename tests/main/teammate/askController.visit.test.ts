@@ -5,6 +5,7 @@ import type { PingTag } from '../../../src/shared/ipc';
 import { DEFAULT_SETTINGS, type Settings } from '../../../src/shared/settings';
 import { EMOTE_CATALOG } from '../../../src/shared/emoteCatalog';
 import { zoomRect } from '../../../src/shared/teammate/coords';
+import type { PetCommand, PetDriveResult } from '../../../src/shared/teammate/petControl';
 import {
   DEFAULT_TEAMMATE, type AgentProfile, type BuiltinProfile, type TeammateSettings,
 } from '../../../src/shared/teammate/settings';
@@ -29,6 +30,8 @@ interface Options {
   teammate?: Partial<TeammateSettings>;
   /** The foreground app never answers, so an ask started in the test keeps running. */
   holdAsk?: boolean;
+  /** The desktop pets an agent may drive. */
+  pet?: AskDeps['pet'];
 }
 
 function harness(opts: Options = {}) {
@@ -144,6 +147,7 @@ function harness(opts: Options = {}) {
     },
     actions,
     cursor: () => CURSOR,
+    ...(opts.pet ? { pet: opts.pet } : {}),
   };
   const ctl = new AskController(deps);
   return {
@@ -448,5 +452,133 @@ describe('AskController visitors', () => {
     await h.ctl.visitorCall({ name: 'x' }, 'say', { text: 'two' });
     expect(h.cards.length).toBeGreaterThan(1);
     for (const card of h.cards) expect(card.streaming).toBe(false);
+  });
+});
+
+describe('AskController pet driving', () => {
+  const OFF_PETS = 'The user hasn\'t let agents drive the desktop pets. They can turn on Let agents drive the pets in '
+    + 'lolPing\'s Desktop pets settings.';
+  const pets = () => {
+    const calls: Array<{ cmd: PetCommand; from: string }> = [];
+    let answer: PetDriveResult = { ok: true, text: 'whale says it.' };
+    const pet: NonNullable<AskDeps['pet']> = {
+      goTo: () => undefined, cheer: () => undefined, release: () => undefined, setCaptureExcluded: () => undefined,
+      drive: (cmd, from) => {
+        calls.push({ cmd, from });
+        return answer;
+      },
+    };
+    return { pet, calls, answer: (a: PetDriveResult) => void (answer = a) };
+  };
+  const on = { agentsCanDrivePets: true };
+
+  it('refuses while the switch is off, and never reaches the pets', async () => {
+    const p = pets();
+    const h = harness({ pet: p.pet });
+    const r = await h.ctl.visitorCall({ name: 'claude-code' }, 'pet_say', { text: 'hi' });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toBe(OFF_PETS);
+    expect(p.calls).toEqual([]);
+  });
+
+  it('offers the pet tools only while the switch is on', () => {
+    const off = harness();
+    expect(off.ctl.visitorTools().map((d) => d.name)).toEqual(['say', 'ping', 'emote', 'answer']);
+    const h = harness({ teammate: on });
+    expect(h.ctl.visitorTools().map((d) => d.name))
+      .toEqual(['say', 'ping', 'emote', 'answer', 'pet_status', 'pet_say', 'pet_walk', 'pet_play']);
+  });
+
+  it('is a switch of its own: it needs no permission to ping, and pinging needs none to drive', async () => {
+    const p = pets();
+    const h = harness({ teammate: { ...on, agentsCanPing: false }, pet: p.pet });
+    expect((await h.ctl.visitorCall({ name: 'x' }, 'pet_say', { text: 'hi' })).isError).toBe(false);
+    expect((await h.ctl.visitorCall({ name: 'x' }, 'ping', ping)).isError).toBe(true);
+    const only = harness({ teammate: { agentsCanPing: true }, pet: p.pet });
+    expect((await only.ctl.visitorCall({ name: 'x' }, 'pet_say', { text: 'hi' })).isError).toBe(true);
+  });
+
+  it('hands the pets the command, read from the arguments, with the agent\'s name', async () => {
+    const p = pets();
+    const h = harness({ teammate: { ...on, profiles: [claude()] }, pet: p.pet });
+    const r = await h.ctl.visitorCall(
+      { name: 'claude-code' }, 'pet_say', { text: ' Build is green. ', mood: 'happy', pet: 'whale' },
+    );
+    expect(r).toEqual({ content: [{ text: 'whale says it.' }], isError: false });
+    await h.ctl.visitorCall({ name: 'claude-code' }, 'pet_walk', { to: 'cursor' });
+    await h.ctl.visitorCall({ name: 'claude-code' }, 'pet_play', { animation: 'dance' });
+    await h.ctl.visitorCall({ name: 'claude-code' }, 'pet_status', {});
+    expect(p.calls).toEqual([
+      { cmd: { kind: 'say', pet: 'whale', text: 'Build is green.', mood: 'happy' }, from: 'My Claude' },
+      { cmd: { kind: 'walk', pet: null, to: { place: 'cursor' } }, from: 'My Claude' },
+      { cmd: { kind: 'play', pet: null, anim: 'dance', mood: null }, from: 'My Claude' },
+      { cmd: { kind: 'status' }, from: 'My Claude' },
+    ]);
+  });
+
+  it('draws nothing of its own: no ping, bubble or card at the cursor', async () => {
+    const p = pets();
+    const h = harness({ teammate: on, pet: p.pet });
+    await h.ctl.visitorCall({ name: 'x' }, 'pet_say', { text: 'hi' });
+    expect([h.pings, h.bubbles, h.cards]).toEqual([[], [], []]);
+  });
+
+  it('refuses arguments it can\'t use without reaching the pets', async () => {
+    const p = pets();
+    const h = harness({ teammate: on, pet: p.pet });
+    for (const [name, args] of [
+      ['pet_say', {}], ['pet_say', { text: '  ' }], ['pet_say', { text: 'hi', pet: 'dog' }], ['pet_walk', {}],
+      ['pet_walk', { to: 'the moon' }], ['pet_play', {}], ['pet_play', { animation: '../x' }],
+    ] as const) {
+      const r = await h.ctl.visitorCall({ name: 'x' }, name, args);
+      expect(r.isError).toBe(true);
+      expect(text(r)).toBe('Ignored: the arguments were not valid.');
+      await h.advance(1000);
+    }
+    expect(p.calls).toEqual([]);
+  });
+
+  it('passes on the pets\' own refusal, as an error', async () => {
+    const p = pets();
+    p.answer({ ok: false, text: 'The pets are busy with the user\'s own ping; try again in a moment.' });
+    const h = harness({ teammate: on, pet: p.pet });
+    const r = await h.ctl.visitorCall({ name: 'x' }, 'pet_walk', { to: 'home' });
+    expect(r).toEqual({ content: [{ text: 'The pets are busy with the user\'s own ping; try again in a moment.' }], isError: true });
+  });
+
+  it('says so when this computer has no pets', async () => {
+    const h = harness({ teammate: on });
+    const r = await h.ctl.visitorCall({ name: 'x' }, 'pet_say', { text: 'hi' });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toBe('This computer has no desktop pets.');
+  });
+
+  it('refuses while lolPing is paused', async () => {
+    const p = pets();
+    const h = harness({ teammate: on, pet: p.pet });
+    h.setEnabled(false);
+    expect(text(await h.ctl.visitorCall({ name: 'x' }, 'pet_say', { text: 'hi' }))).toBe('lolPing is paused.');
+    expect(p.calls).toEqual([]);
+  });
+
+  it('rate-limits a client that drives the pets too often', async () => {
+    const p = pets();
+    const h = harness({ teammate: on, pet: p.pet });
+    for (let i = 0; i < 5; i += 1) {
+      expect((await h.ctl.visitorCall({ name: 'busy' }, 'pet_play', { mood: 'happy' })).isError).toBe(false);
+    }
+    expect(text(await h.ctl.visitorCall({ name: 'busy' }, 'pet_play', { mood: 'happy' }))).toBe('Too many pings.');
+    expect(p.calls).toHaveLength(5);
+  });
+
+  it('serves the pet tools through the bridge handler', async () => {
+    const p = pets();
+    const h = harness({ teammate: on, pet: p.pet });
+    const handler = bridgeHandler(h.ctl);
+    const session = { ask: null, client: { name: 'copilot-cli', version: '1' } };
+    expect(handler.list(session).map((d) => d.name)).toContain('pet_walk');
+    const r = await handler.call(session, 'pet_walk', { x: 10, y: 90 }, new AbortController().signal);
+    expect(r.isError).toBe(false);
+    expect(p.calls[0].cmd).toEqual({ kind: 'walk', pet: null, to: { xPct: 10, yPct: 90 } });
   });
 });

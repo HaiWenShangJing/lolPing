@@ -5,11 +5,15 @@ import { APP_SCHEME } from '../appProtocol';
 import { IS_LINUX, IS_MAC, loadPage, preloadPath } from '../paths';
 import { PET_CH, parsePetDrag, parsePetHit, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg } from '../../shared/petIpc';
 import {
-  keepInside, parsePetManifest, petIds, standBeside, standLeftOf, stepToward, DEFAULT_PETS, PET_FACES, type PetId, type PetManifest, type PetPose, type PetsSetting,
+  keepInside, parsePetManifest, petIds, standBeside, standLeftOf, stepToward, DEFAULT_PETS, PET_FACES, PET_IDS, type PetId, type PetManifest, type PetPose, type PetsSetting,
 } from '../../shared/teammate/pet';
 import { moodAnim, type Mood } from '../../shared/teammate/mood';
 import { glanceFlip, lifeStep, startLife, type Life } from '../../shared/teammate/life';
 import { gazeToward } from '../../shared/teammate/live2d';
+import {
+  NO_PETS, PETS_BUSY, describePets, speechMs, walkSpot, type PetCommand, type PetDriveResult, type PetStatus, type PetTarget,
+} from '../../shared/teammate/petControl';
+import { PetSpeech } from './petSpeech';
 
 type Point = { x: number; y: number };
 
@@ -28,9 +32,15 @@ const LOOK_TICK_MS = 50;
 const HEAD_AT = 0.24;
 /** Space between pets standing at home, and from the display's corner. */
 const HOME_GAP = 12;
-/** How long pets stay by an ordinary ping before they walk home. */
+/** How often an agent's hold on a pet is checked: when its show is over, and when it is time to walk home. */
+const DRIVE_TICK_MS = 500;
+/** How long a pet an agent sent somewhere stays there once it arrives, before it walks home by itself. */
+const SPOT_HOLD_MS = 45_000;
+/** How long an animation an agent asked for plays before the pet goes back to resting. */
+const SHOW_MS = 8_000;
 
-type Where = 'home' | 'toPing' | 'atPing' | 'back';
+/** `toSpot` and `atSpot` are an agent's errand (see `drive`); the others follow the user's pings. */
+type Where = 'home' | 'toPing' | 'atPing' | 'back' | 'toSpot' | 'atSpot';
 
 interface Pet {
   id: PetId;
@@ -57,6 +67,15 @@ interface Pet {
   gaze: Point | null;
   /** Whether a Live2D pet's window takes the mouse (the pointer is on the character) rather than passing it through. */
   interactive: boolean;
+  /**
+   * An agent has the pet: until when (ms since the epoch; Infinity while it is on its way) it stays away from home
+   * and keeps its idle life off. Null when no agent has it.
+   */
+  hold: number | null;
+  /** When the animation an agent asked for ends and the pet rests again; 0 when none plays. */
+  show: number;
+  /** An animation an agent asked for while the pet was on its way: it plays on arrival. */
+  arrive: string | null;
 }
 
 /**
@@ -70,6 +89,8 @@ export class PetWindows {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lifeTimer: ReturnType<typeof setInterval> | null = null;
   private lookTimer: ReturnType<typeof setInterval> | null = null;
+  private driveTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly speech = new PetSpeech();
   private lifeOn = true;
   private lastTick = 0;
   private setting: PetsSetting = DEFAULT_PETS;
@@ -98,6 +119,7 @@ export class PetWindows {
     for (const [id, pet] of [...this.pets]) {
       if (want.includes(id)) continue;
       this.pets.delete(id);
+      this.speech.hide(id);
       if (!pet.win.isDestroyed()) pet.win.destroy();
     }
     for (const id of want) {
@@ -160,7 +182,7 @@ export class PetWindows {
     const pointer = screen.getCursorScreenPoint();
     for (const pet of this.pets.values()) {
       if (pet.win.isDestroyed()) continue;
-      if (pet.drag || pet.where !== 'home' || this.ping !== null) {
+      if (pet.drag || pet.where !== 'home' || pet.hold !== null || this.ping !== null) {
         pet.life = startLife(now, Math.random); // a show waits until the pet has been quiet at home a while
         continue;
       }
@@ -180,6 +202,7 @@ export class PetWindows {
   /** The ask's ping is at `ping` (screen DIPs): every pet walks to stand left of it and thinks, the bubble opens on the right. */
   goTo(ping: Point): void {
     if (this.pets.size === 0) return;
+    this.endErrands();
     this.ping = ping;
     this.waiting = true;
     this.mood = null;
@@ -200,6 +223,7 @@ export class PetWindows {
   /** An ordinary ping was placed at ping (screen DIPs): pets run over and stay there until the next ping or a drag. */
   visit(ping: Point): void {
     if (this.pets.size === 0) return;
+    this.endErrands();
     this.ping = ping;
     this.waiting = false;
     this.talkMs = 0;
@@ -238,6 +262,9 @@ export class PetWindows {
     for (const pet of this.pets.values()) {
       if (pet.where === 'home') continue;
       pet.where = 'back';
+      pet.hold = null;
+      pet.show = 0;
+      pet.arrive = null;
       pet.target = pet.home;
       pet.moveAt = Date.now();
     }
@@ -246,13 +273,152 @@ export class PetWindows {
 
   setCaptureExcluded(on: boolean): void {
     this.captureExcluded = on;
+    this.speech.setCaptureExcluded(on);
     for (const pet of this.pets.values()) if (!pet.win.isDestroyed()) pet.win.setContentProtection(on);
+  }
+
+  /**
+   * An agent drives the pets (the user has let it): `say` opens a speech bubble, `walk` sends a pet somewhere and
+   * leaves it there a while, `play` plays an animation for a few seconds. The user's own pings come first: while pets
+   * are at one, an agent has to wait, and a ping that comes in takes the pets back. `from` is the agent's name.
+   */
+  drive(cmd: PetCommand, from: string): PetDriveResult {
+    if (this.pets.size === 0) return { ok: false, text: NO_PETS };
+    if (cmd.kind === 'status') return { ok: true, text: describePets(this.statuses()) };
+    if (this.ping !== null) return { ok: false, text: PETS_BUSY };
+    const named = cmd.pet === null ? null : this.pets.get(cmd.pet);
+    if (cmd.pet !== null && !named) {
+      return { ok: false, text: `The pet ${cmd.pet} isn't showing. ${describePets(this.statuses())}` };
+    }
+    const shown = PET_IDS.flatMap((id) => this.pets.get(id) ?? []);
+    const who = named ? [named] : cmd.kind === 'say' ? shown.slice(0, 1) : shown;
+    switch (cmd.kind) {
+      case 'say': return this.driveSay(who[0], cmd.text, cmd.mood, from);
+      case 'walk': return this.driveWalk(who, cmd.to);
+      case 'play': return this.drivePlay(who, cmd.anim, cmd.mood);
+    }
+  }
+
+  private driveSay(pet: Pet, text: string, mood: Mood | null, from: string): PetDriveResult {
+    const ms = speechMs(text);
+    this.holdUntil(pet, Date.now() + ms + 1_000);
+    if (mood && pet.where !== 'toSpot') this.perform(pet, moodAnim(pet.id, mood, (a) => a in pet.manifest.anims), ms);
+    this.speak(pet, ms);
+    this.speech.show(pet.id, text, from, pet.win.getBounds(), ms);
+    return { ok: true, text: `${pet.id} says it.` };
+  }
+
+  private driveWalk(pets: Pet[], to: PetTarget): PetDriveResult {
+    const going = pets.filter((p) => !p.drag);
+    if (going.length === 0) return { ok: false, text: 'The pet is being dragged by the user right now.' };
+    const main = screen.getPrimaryDisplay().workArea;
+    const cursor = screen.getCursorScreenPoint();
+    const near = { at: cursor, area: screen.getDisplayNearestPoint(cursor).workArea };
+    const home = 'place' in to && to.place === 'home';
+    going.forEach((pet, i) => {
+      pet.target = walkSpot(to, pet.manifest, i, going.length, { area: main, cursor: near, home: pet.home, random: Math.random });
+      pet.where = home ? 'back' : 'toSpot';
+      pet.hold = home ? null : Infinity;
+      pet.show = 0;
+      pet.arrive = null;
+      pet.moveAt = Date.now() + i * STAGGER_MS;
+      if (home) this.speech.hide(pet.id);
+    });
+    this.startTimer();
+    this.startDriveTimer();
+    return { ok: true, text: `${going.map((p) => p.id).join(', ')} ${going.length > 1 ? 'are' : 'is'} on the way.` };
+  }
+
+  private drivePlay(pets: Pet[], anim: string | null, mood: Mood | null): PetDriveResult {
+    const played: string[] = [];
+    for (const pet of pets) {
+      const name = anim !== null ? (anim in pet.manifest.anims ? anim : null) : moodAnim(pet.id, mood, (a) => a in pet.manifest.anims);
+      if (name === null || pet.drag) continue;
+      if (pet.where === 'toSpot') pet.arrive = name;
+      else this.perform(pet, name, SHOW_MS);
+      played.push(pet.id);
+    }
+    if (played.length > 0) return { ok: true, text: `${played.join(', ')} plays it.` };
+    return { ok: false, text: `No pet has that animation. ${describePets(this.statuses())}` };
+  }
+
+  /** Plays `anim` for `ms`, keeping the pet where it is and its idle life off meanwhile. */
+  private perform(pet: Pet, anim: string, ms: number): void {
+    const until = Date.now() + ms;
+    pet.show = until;
+    this.holdUntil(pet, until);
+    this.setPose(pet, 'happy', anim);
+  }
+
+  private holdUntil(pet: Pet, until: number): void {
+    pet.hold = pet.hold === null ? until : Math.max(pet.hold, until);
+    this.startDriveTimer();
+  }
+
+  private statuses(): PetStatus[] {
+    const area = screen.getPrimaryDisplay().workArea;
+    return PET_IDS.flatMap((id) => {
+      const pet = this.pets.get(id);
+      if (!pet) return [];
+      const share = (v: number, from: number, len: number): number => Math.round(((v - from) / len) * 100);
+      return [{
+        id,
+        xPct: share(pet.at.x + pet.manifest.width / 2, area.x, area.width),
+        yPct: share(pet.at.y + pet.manifest.height / 2, area.y, area.height),
+        away: pet.where !== 'home',
+        anims: Object.keys(pet.manifest.anims),
+      }];
+    });
+  }
+
+  /** The user's own ping comes: whatever an agent had the pets doing is over. */
+  private endErrands(): void {
+    this.speech.hideAll();
+    for (const pet of this.pets.values()) {
+      pet.hold = null;
+      pet.show = 0;
+      pet.arrive = null;
+    }
+  }
+
+  private startDriveTimer(): void {
+    this.driveTimer ??= setInterval(() => this.driveTick(), DRIVE_TICK_MS);
+  }
+
+  /** A pet's show ends and it rests again; its time away ends and it walks home. Stops once no agent has a pet. */
+  private driveTick(): void {
+    const now = Date.now();
+    let held = false;
+    for (const pet of this.pets.values()) {
+      if (pet.win.isDestroyed()) continue;
+      if (pet.show !== 0 && now >= pet.show) {
+        pet.show = 0;
+        if ((pet.where === 'home' || pet.where === 'atSpot') && !pet.drag) this.setPose(pet, 'idle');
+      }
+      if (pet.hold !== null && now >= pet.hold) {
+        pet.hold = null;
+        if (pet.where === 'atSpot') {
+          pet.show = 0;
+          pet.where = 'back';
+          pet.target = pet.home;
+          pet.moveAt = now;
+          this.startTimer();
+        }
+      }
+      if (pet.hold !== null || pet.show !== 0) held = true;
+    }
+    if (held || this.driveTimer === null) return;
+    clearInterval(this.driveTimer);
+    this.driveTimer = null;
   }
 
   destroy(): void {
     ipcMain.removeListener(PET_CH.drag, this.onDrag);
     ipcMain.removeListener(PET_CH.hit, this.onHit);
     this.stopTimer();
+    if (this.driveTimer !== null) clearInterval(this.driveTimer);
+    this.driveTimer = null;
+    this.speech.destroy();
     if (this.lifeTimer !== null) clearInterval(this.lifeTimer);
     this.lifeTimer = null;
     if (this.lookTimer !== null) clearInterval(this.lookTimer);
@@ -304,7 +470,7 @@ export class PetWindows {
       if (manifest.live2d && !IS_LINUX) win.setIgnoreMouseEvents(true, { forward: true });
       const pet: Pet = {
         id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null,
-        life: startLife(Date.now(), Math.random), gaze: null, interactive: false,
+        life: startLife(Date.now(), Math.random), gaze: null, interactive: false, hold: null, show: 0, arrive: null,
       };
       const init: PetInit = { id, base: `${APP_SCHEME}://pets/${id}`, manifest, rest };
       win.webContents.on('did-finish-load', () => {
@@ -363,7 +529,7 @@ export class PetWindows {
     this.lastTick = now;
     let moving = false;
     for (const pet of this.pets.values()) {
-      if (pet.win.isDestroyed() || pet.drag || pet.where === 'home' || pet.where === 'atPing') continue;
+      if (pet.win.isDestroyed() || pet.drag || pet.where === 'home' || pet.where === 'atPing' || pet.where === 'atSpot') continue;
       if (now < pet.moveAt) {
         moving = true;
         continue;
@@ -376,9 +542,19 @@ export class PetWindows {
       pet.win.setBounds({
         x: Math.round(step.at.x), y: Math.round(step.at.y), width: pet.manifest.width, height: pet.manifest.height,
       });
+      this.speech.move(pet.id, pet.win.getBounds());
       if (!step.arrived) {
         this.setPose(pet, 'walk');
         moving = true;
+      } else if (pet.where === 'toSpot') {
+        pet.where = 'atSpot';
+        pet.flip = false;
+        pet.hold = now + SPOT_HOLD_MS;
+        this.startDriveTimer();
+        const anim = pet.arrive;
+        pet.arrive = null;
+        if (anim !== null) this.perform(pet, anim, SHOW_MS);
+        else this.setPose(pet, 'idle');
       } else if (pet.where === 'toPing') {
         pet.where = 'atPing';
         pet.flip = false;
@@ -397,10 +573,10 @@ export class PetWindows {
     if (!moving) this.stopTimer();
   }
 
-  /** A Live2D pet at the ping moves its mouth for the line it is saying. */
-  private speak(pet: Pet): void {
-    if (!pet.manifest.live2d || this.talkMs <= 0 || pet.win.isDestroyed()) return;
-    const msg: PetTalkMsg = { ms: this.talkMs };
+  /** A Live2D pet moves its mouth for the line it is saying: at the ping that is the answer, for an agent `ms` is the bubble's time. */
+  private speak(pet: Pet, ms = this.talkMs): void {
+    if (!pet.manifest.live2d || ms <= 0 || pet.win.isDestroyed()) return;
+    const msg: PetTalkMsg = { ms };
     pet.win.webContents.send(PET_CH.talk, msg);
   }
 
@@ -428,6 +604,9 @@ export class PetWindows {
     if (!pet || !msg) return;
     if (msg.phase === 'start') {
       pet.drag = { pointer: { x: msg.x, y: msg.y }, from: { ...pet.at } };
+      pet.hold = null; // the user has taken it: no agent keeps it away, or walks it home from under the pointer
+      pet.show = 0;
+      pet.arrive = null;
       this.setPose(pet, 'held');
       return;
     }
@@ -438,6 +617,7 @@ export class PetWindows {
       { x: drag.from.x + (msg.x - drag.pointer.x), y: drag.from.y + (msg.y - drag.pointer.y) }, pet.manifest, area,
     );
     pet.win.setBounds({ ...pet.at, width: pet.manifest.width, height: pet.manifest.height });
+    this.speech.move(pet.id, pet.win.getBounds());
     if (msg.phase === 'end') {
       pet.drag = null;
       // Where it was put down is home; an ask that comes later sends it from there.

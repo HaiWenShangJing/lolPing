@@ -82,6 +82,8 @@ export interface TeammateSettings {
   pets: PetsSetting;
   /** Resting pets sometimes play one of their animations, and turn to look at the pointer. */
   petLife: boolean;
+  /** Lets a coding agent make the desktop pets speak, walk and play through lolPing's bridge. Off until the user turns it on. */
+  agentsCanDrivePets: boolean;
   /** The teammate may save short notes about the user and reads them back in later asks. Off until the user turns it on. */
   memory: boolean;
   /** keepDays null keeps threads until the thread cap removes them. */
@@ -112,6 +114,7 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   receiptSound: true,
   pets: DEFAULT_PETS,
   petLife: true,
+  agentsCanDrivePets: false,
   memory: false,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
@@ -322,6 +325,7 @@ export function normalizeTeammate(
     receiptSound: bool(r.receiptSound, DEFAULT_TEAMMATE.receiptSound),
     pets: normalizePets(r.pets),
     petLife: bool(r.petLife, DEFAULT_TEAMMATE.petLife),
+    agentsCanDrivePets: bool(r.agentsCanDrivePets, DEFAULT_TEAMMATE.agentsCanDrivePets),
     memory: bool(r.memory, DEFAULT_TEAMMATE.memory),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),

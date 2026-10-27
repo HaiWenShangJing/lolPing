@@ -294,6 +294,7 @@ function harness(opts: HarnessOptions = {}) {
       cheer: (mood) => void petCalls.push(['cheer', mood ?? null]),
       release: () => void petCalls.push(['release', null]),
       setCaptureExcluded: () => undefined,
+      drive: () => ({ ok: true, text: '' }),
     },
     thumbnail: (jpeg) => {
       thumbs.push(jpeg.toString());

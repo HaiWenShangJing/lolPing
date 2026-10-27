@@ -21,6 +21,8 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
       <p className="desc roomNote">{m.petDesc}</p>
       <SwitchRow icon={<Emoji24Regular />} title={m.petLife} description={m.petLifeDesc} checked={mate.petLife}
         onChange={(petLife) => void update({ teammate: { ...mate, petLife } })} />
+      <SwitchRow icon={<Emoji24Regular />} title={m.petAgents} description={m.petAgentsDesc} checked={mate.agentsCanDrivePets}
+        onChange={(agentsCanDrivePets) => void update({ teammate: { ...mate, agentsCanDrivePets } })} />
       {PET_IDS.map((id) => {
         const pet = mate.pets[id];
         const setPet = (p: Partial<PetSetting>) =>

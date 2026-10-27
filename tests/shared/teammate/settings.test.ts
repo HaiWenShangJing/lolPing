@@ -196,6 +196,13 @@ describe('normalizeTeammate', () => {
     expect(normalizeTeammate({ agentsCanPing: 'yes' }, win).agentsCanPing).toBe(false);
   });
 
+  it('keeps agents from driving the pets until the user says so', () => {
+    expect(normalizeTeammate({ tagName: 'Old' }, win).agentsCanDrivePets).toBe(false);
+    expect(normalizeTeammate({ agentsCanDrivePets: true }, win).agentsCanDrivePets).toBe(true);
+    expect(normalizeTeammate({ agentsCanDrivePets: 'yes' }, win).agentsCanDrivePets).toBe(false);
+    expect(normalizeTeammate({ agentsCanPing: true }, win).agentsCanDrivePets).toBe(false);
+  });
+
   it('keeps agent permission keys but never one for a shell tool', () => {
     const t = normalizeTeammate({
       profiles: [validProfile, validAgent],
