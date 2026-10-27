@@ -123,7 +123,9 @@ function harness(opts: Options = {}) {
     settings: () => settings,
     enabled: () => true,
     lang: () => opts.lang ?? 'en',
-    secrets: { available: () => true, key: () => null, instructions: () => '' },
+    secrets: {
+      available: () => true, key: () => null, instructions: () => '', memory: () => [], remember: async () => 'saved' as const,
+    },
     context: {
       foreground: async () => opts.foreground ?? VSCODE,
       capture: async (req) => {

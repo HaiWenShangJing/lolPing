@@ -5,8 +5,10 @@ import { APP_SCHEME } from '../appProtocol';
 import { IS_LINUX, IS_MAC, loadPage, preloadPath } from '../paths';
 import { PET_CH, parsePetDrag, type PetInit, type PetPoseMsg } from '../../shared/petIpc';
 import {
-  keepInside, parsePetManifest, petIds, standBeside, stepToward, DEFAULT_PETS, PET_FACES, type PetId, type PetManifest, type PetPose, type PetsSetting,
+  keepInside, parsePetManifest, petIds, standBeside, standLeftOf, stepToward, DEFAULT_PETS, PET_FACES, type PetId, type PetManifest, type PetPose, type PetsSetting,
 } from '../../shared/teammate/pet';
+import { moodAnim, type Mood } from '../../shared/teammate/mood';
+import { glanceFlip, lifeStep, startLife, type Life } from '../../shared/teammate/life';
 
 type Point = { x: number; y: number };
 
@@ -15,6 +17,8 @@ const RUN_SPEED = 900;
 const TICK_MS = 16;
 /** The second pet leaves a moment after the first, so two of them don't move as one. */
 const STAGGER_MS = 160;
+/** How often a resting pet looks at the pointer and at the clock for its next little show. */
+const LIFE_TICK_MS = 1000;
 /** Space between pets standing at home, and from the display's corner. */
 const HOME_GAP = 12;
 /** How long pets stay by an ordinary ping before they walk home. */
@@ -40,6 +44,8 @@ interface Pet {
   sentFlip: boolean;
   /** Pointer and window position when a drag began; null when none is on. */
   drag: { pointer: Point; from: Point } | null;
+  /** What it does at home when idle: its next little show, or the one it is playing. */
+  life: Life;
 }
 
 /**
@@ -51,6 +57,8 @@ export class PetWindows {
   private readonly pets = new Map<PetId, Pet>();
   private loading = new Set<PetId>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lifeTimer: ReturnType<typeof setInterval> | null = null;
+  private lifeOn = true;
   private lastTick = 0;
   private setting: PetsSetting = DEFAULT_PETS;
   /** Where the ask's ping is, while pets are sent to it. */
@@ -59,15 +67,18 @@ export class PetWindows {
   private waiting = false;
   /** The ping is an ordinary one: pets just stand there in their chosen resting animation. */
   private visiting = false;
+  /** How the answer that came in was said; null until one does. */
+  private mood: Mood | null = null;
   private captureExcluded = false;
 
   constructor(private readonly dir: string) {
     ipcMain.on(PET_CH.drag, this.onDrag);
   }
 
-  /** Brings the shown pets in line with the setting. */
-  sync(setting: PetsSetting): void {
+  /** Brings the shown pets in line with the setting; `life` lets resting pets play now and then and look at the pointer. */
+  sync(setting: PetsSetting, life = true): void {
     this.setting = setting;
+    this.lifeOn = life;
     const want = petIds(setting);
     for (const [id, pet] of [...this.pets]) {
       if (want.includes(id)) continue;
@@ -82,19 +93,62 @@ export class PetWindows {
     }
     for (const id of want) if (!this.pets.has(id) && !this.loading.has(id)) void this.create(id);
     if (want.length === 0) this.stopTimer();
+    this.syncLife(want.length > 0);
   }
 
-  /** The ask's ping is at `ping` (screen DIPs): every pet walks to stand beside it and thinks. */
+  /** Runs the idle-life clock while there are pets to live it; stopping it puts the pets back to rest. */
+  private syncLife(pets: boolean): void {
+    if (this.lifeOn && pets) {
+      this.lifeTimer ??= setInterval(() => this.lifeTick(), LIFE_TICK_MS);
+      return;
+    }
+    if (this.lifeTimer === null) return;
+    clearInterval(this.lifeTimer);
+    this.lifeTimer = null;
+    for (const pet of this.pets.values()) {
+      pet.life = startLife(Date.now(), Math.random);
+      if (pet.where !== 'home' || pet.drag) continue;
+      pet.flip = false;
+      this.setPose(pet, 'idle');
+    }
+  }
+
+  /** One second of idle life: resting pets at home look at the pointer and, now and then, play a little show. */
+  private lifeTick(): void {
+    const now = Date.now();
+    const pointer = screen.getCursorScreenPoint();
+    for (const pet of this.pets.values()) {
+      if (pet.win.isDestroyed()) continue;
+      if (pet.drag || pet.where !== 'home' || this.ping !== null) {
+        pet.life = startLife(now, Math.random); // a show waits until the pet has been quiet at home a while
+        continue;
+      }
+      const flip = glanceFlip(pet.id, pet.at.x + pet.manifest.width / 2, pointer.x, pet.flip);
+      if (flip !== pet.flip) {
+        pet.flip = flip;
+        this.setPose(pet, pet.pose, pet.anim);
+      }
+      const step = lifeStep(pet.life, now, pet.id, pet.rest, Math.random);
+      pet.life = step.life;
+      if (step.action?.kind === 'play') this.setPose(pet, 'idle', step.action.anim);
+      else if (step.action?.kind === 'rest') this.setPose(pet, 'idle');
+    }
+  }
+
+  /** The ask's ping is at `ping` (screen DIPs): every pet walks to stand left of it and thinks, the bubble opens on the right. */
   goTo(ping: Point): void {
     if (this.pets.size === 0) return;
     this.ping = ping;
     this.waiting = true;
+    this.mood = null;
     this.visiting = false;
     const all = [...this.pets.values()];
+    const sizes = all.map((p) => p.manifest);
+    const left = this.areaAt(ping).x;
     all.forEach((pet, i) => {
       pet.drag = null; // a drag whose release was swallowed by the ping gesture would freeze it
       pet.where = 'toPing';
-      pet.target = this.standingAt(ping, i, all.length, pet);
+      pet.target = this.keepOnDisplay(standLeftOf(ping, i, sizes, left), ping, pet);
       pet.moveAt = Date.now() + i * STAGGER_MS;
     });
     this.startTimer();
@@ -116,16 +170,18 @@ export class PetWindows {
     this.startTimer();
   }
 
-  /** The answer is in. */
-  cheer(): void {
+  /** The answer is in; `mood` is how the teammate said it, which each pet plays in its own animation. */
+  cheer(mood: Mood | null = null): void {
     this.waiting = false;
-    for (const pet of this.pets.values()) if (pet.where === 'atPing') this.setPose(pet, 'happy');
+    this.mood = mood;
+    for (const pet of this.pets.values()) if (pet.where === 'atPing') this.setPose(pet, 'happy', this.cheerAnim(pet));
   }
 
   /** The ask is over, or was dropped: pets go home. */
   release(): void {
     this.ping = null;
     this.waiting = false;
+    this.mood = null;
     for (const pet of this.pets.values()) {
       if (pet.where === 'home') continue;
       pet.where = 'back';
@@ -143,14 +199,22 @@ export class PetWindows {
   destroy(): void {
     ipcMain.removeListener(PET_CH.drag, this.onDrag);
     this.stopTimer();
+    if (this.lifeTimer !== null) clearInterval(this.lifeTimer);
+    this.lifeTimer = null;
     for (const pet of this.pets.values()) if (!pet.win.isDestroyed()) pet.win.destroy();
     this.pets.clear();
   }
 
   private standingAt(ping: Point, index: number, count: number, pet: Pet): Point {
-    const spot = standBeside(ping, index, count, pet.manifest);
-    const area = screen.getDisplayNearestPoint({ x: Math.round(ping.x), y: Math.round(ping.y) }).workArea;
-    return keepInside(spot, pet.manifest, area);
+    return this.keepOnDisplay(standBeside(ping, index, count, pet.manifest), ping, pet);
+  }
+
+  private areaAt(ping: Point): { x: number; y: number; width: number; height: number } {
+    return screen.getDisplayNearestPoint({ x: Math.round(ping.x), y: Math.round(ping.y) }).workArea;
+  }
+
+  private keepOnDisplay(spot: Point, ping: Point, pet: Pet): Point {
+    return keepInside(spot, pet.manifest, this.areaAt(ping));
   }
 
   private homeFor(index: number, manifest: PetManifest): Point {
@@ -182,6 +246,7 @@ export class PetWindows {
       if (IS_MAC) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
       const pet: Pet = {
         id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null,
+        life: startLife(Date.now(), Math.random),
       };
       const init: PetInit = { id, base: `${APP_SCHEME}://pets/${id}`, manifest, rest };
       win.webContents.on('did-finish-load', () => {
@@ -205,8 +270,12 @@ export class PetWindows {
     return rest in manifest.anims ? rest : 'idle';
   }
 
-  private setPose(pet: Pet, pose: PetPose): void {
-    const anim = pose === 'idle' ? pet.rest : pose;
+  /** The animation this pet plays for the answer that just came in. */
+  private cheerAnim(pet: Pet): string {
+    return moodAnim(pet.id, this.mood, (name) => name in pet.manifest.anims);
+  }
+
+  private setPose(pet: Pet, pose: PetPose, anim: string = pose === 'idle' ? pet.rest : pose): void {
     if ((pet.anim === anim && pet.sentFlip === pet.flip) || pet.win.isDestroyed()) return;
     pet.pose = pose;
     pet.anim = anim;
@@ -252,7 +321,9 @@ export class PetWindows {
       } else if (pet.where === 'toPing') {
         pet.where = 'atPing';
         pet.flip = false;
-        this.setPose(pet, this.waiting ? 'think' : this.visiting ? 'idle' : 'happy');
+        if (this.waiting) this.setPose(pet, 'think');
+        else if (this.visiting) this.setPose(pet, 'idle');
+        else this.setPose(pet, 'happy', this.cheerAnim(pet));
       } else {
         pet.where = 'home';
         pet.flip = false;

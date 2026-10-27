@@ -25,6 +25,8 @@ import {
   TAG_NAME_MAX, isBuiltin, type AgentProfile, type BuiltinProfile, type Profile, type TeammateSettings,
 } from '../../shared/teammate/settings';
 import { threadAction } from '../../shared/teammate/threads';
+import { lastMood } from '../../shared/teammate/mood';
+import { rememberReply } from '../../shared/teammate/memory';
 import {
   CONSENT_TOOL, applyLimits, parseConsent, parseToolCall, toolDefs, visitorToolDefs, type ActionCall, type Target,
   type ToolCall, type ToolDef,
@@ -55,7 +57,7 @@ export interface AskDeps {
   /** False while lolPing is paused or the teammate is going down: agents' unprompted calls draw nothing then. */
   enabled: () => boolean;
   lang: () => Lang;
-  secrets: Pick<SecretStore, 'key' | 'instructions' | 'available'>;
+  secrets: Pick<SecretStore, 'key' | 'instructions' | 'available' | 'memory' | 'remember'>;
   context: Pick<ContextClient, 'capture' | 'foreground' | 'read'>;
   /** lolPing's main process, which owns the card and the words box: an ask made from one isn't made in that window. */
   ownPid: number;
@@ -311,6 +313,7 @@ function failureOf(err: unknown): AskFailure {
 const toolsFor = (run: Run, ctx: AskContext): ToolDef[] => toolDefs({
   emotes: run.emotes, spots: run.spots.length, file: ctx.file !== null, look: canLook(run.intent.def.id),
   kind: run.intent.def.kind, form: (ctx.fields?.length ?? 0) > 0, selection: (ctx.system?.selection ?? '') !== '',
+  memory: ctx.memory != null,
 });
 
 /** Whether the preset's permission prompts come to lolPing's `consent` tool (Claude Code only). */
@@ -954,9 +957,15 @@ export class AskController extends EventEmitter {
     return {
       lang: run.lang, intent: run.intent, words: run.words, app: run.app, title: run.title,
       shot, spots: run.spots.map((s) => physicalToOverview(shot, s.phys)), overviewJpeg, zoomJpegs, thread: run.thread,
-      instructions: deps.secrets.instructions(), emotes: run.emotes, marks: layers.marks, system: layers.system,
-      file: layers.file, fields: layers.fields,
+      instructions: deps.secrets.instructions(), memory: this.memoryNotes(), emotes: run.emotes, marks: layers.marks,
+      system: layers.system, file: layers.file, fields: layers.fields,
     };
+  }
+
+  /** The saved notes when memory is on and can be kept encrypted; null otherwise, so `remember` isn't offered either. */
+  private memoryNotes(): string[] | null {
+    const { secrets, settings } = this.deps;
+    return settings().teammate.memory && secrets.available() ? secrets.memory() : null;
   }
 
   /**
@@ -1188,6 +1197,10 @@ export class AskController extends EventEmitter {
     for (const { call } of valid) if (call.tool === 'emote') this.placeEmote(run, call);
     for (const { call } of valid) if (isAction(call)) this.takeAction(run, call);
     for (const { raw, call } of valid) {
+      if (call.tool !== 'remember') continue;
+      results.set(raw, [{ text: await this.remember(call.text) }]);
+    }
+    for (const { raw, call } of valid) {
       if (call.tool !== 'read_file') continue;
       // Like look: no round follows the last one to read what it gives.
       if (lastRound || !run.doc) {
@@ -1215,6 +1228,17 @@ export class AskController extends EventEmitter {
 
   private takeAction(run: Run, call: ActionCall): void {
     this.deps.actions?.take(this.runInfo(run), call);
+  }
+
+  /** Saves the model's note unless memory was turned off since the ask began; the model reads what became of it. */
+  private async remember(text: string): Promise<string> {
+    if (this.memoryNotes() === null) return 'Memory is off.';
+    try {
+      return rememberReply(await this.deps.secrets.remember(text));
+    } catch (err) {
+      console.warn('[teammate] memory:', err);
+      return 'Could not save the note.';
+    }
   }
 
   private runInfo(run: Run): RunInfo {
@@ -1350,7 +1374,7 @@ export class AskController extends EventEmitter {
     }
     run.machine.done();
     this.stopRun();
-    this.deps.pet?.cheer();
+    this.deps.pet?.cheer(lastMood(run.calls));
     // A line whose time ran out while the answer was still coming gets its time again from now.
     if (this.bubbleShown && this.bubbleTimer === null) this.armBubble(run, run.line);
     if (run.autoCard && !this.cardShown) this.openCard(run);

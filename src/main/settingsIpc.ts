@@ -12,6 +12,7 @@ import type { JoinResult, RoomState } from '../shared/room';
 import { askKeyClashes, panelKeyClashes, patchClashes, rendererPatch } from '../shared/settings';
 import { AGENT_PRESETS } from '../shared/teammate/agents';
 import { CONNECT_APPS, connectSnippet, mcpAddLine, type BridgeCommand } from '../shared/teammate/connectApps';
+import { MEMORY_MAX_ITEMS } from '../shared/teammate/memory';
 import { needsKey } from '../shared/teammate/providers';
 import { isBuiltin, PATH_MAX, type AgentProfile, type BuiltinProfile } from '../shared/teammate/settings';
 import type { UpdateState } from '../shared/update';
@@ -61,7 +62,9 @@ export interface SettingsIpcDeps {
   };
   teammate: {
     /** null while the teammate feature is off: then no key or instructions are read or stored. */
-    secrets(): Pick<SecretStore, 'available' | 'key' | 'hasKey' | 'setKey' | 'instructions' | 'setInstructions'> | null;
+    secrets(): Pick<
+      SecretStore, 'available' | 'key' | 'hasKey' | 'setKey' | 'instructions' | 'setInstructions' | 'memory' | 'setMemory'
+    > | null;
     adapter(p: BuiltinProfile, key: string): Pick<ProviderAdapter, 'listModels'>;
     usage(): UsageMonth;
     /** Resolves true when the operation was carried out. */
@@ -269,6 +272,15 @@ function registerTeammateIpc(d: SettingsIpcDeps): void {
     return stored(() => secrets.setInstructions(text));
   });
   ipcMain.handle(SETTINGS_CH.teammateInstructions, (): string => d.teammate.secrets()?.instructions() ?? '');
+  ipcMain.handle(SETTINGS_CH.teammateSetMemory, (_e, notes: unknown): Promise<SecretResult> | SecretResult => {
+    if (!Array.isArray(notes) || notes.length > MEMORY_MAX_ITEMS * 2 || notes.some((n) => typeof n !== 'string')) {
+      return { ok: false };
+    }
+    const secrets = d.teammate.secrets();
+    if (!secrets) return { ok: false, error: 'unavailable' };
+    return stored(() => secrets.setMemory(notes as string[]));
+  });
+  ipcMain.handle(SETTINGS_CH.teammateMemory, (): string[] => d.teammate.secrets()?.memory() ?? []);
   ipcMain.handle(SETTINGS_CH.teammateUsage, (): UsageMonth => d.teammate.usage());
   ipcMain.handle(SETTINGS_CH.teammateHistory, async (_e, op: unknown): Promise<boolean> => {
     const known = TEAMMATE_HISTORY_OPS.find((o) => o === op);

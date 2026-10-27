@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { renameWithRetry } from '../settingsStore';
+import { addMemory, normalizeMemory, type Remembered } from '../../shared/teammate/memory';
 
 /** The slice of Electron's safeStorage the teammate needs; tests pass a fake. */
 export interface Crypto {
@@ -23,26 +24,28 @@ export class SecretsUnavailableError extends Error {
 interface SecretData {
   keys: Record<string, string>;
   instructions: string;
+  memory: string[];
 }
 
-const EMPTY = (): SecretData => ({ keys: {}, instructions: '' });
+const EMPTY = (): SecretData => ({ keys: {}, instructions: '', memory: [] });
 
 /** Parses untrusted decrypted text; anything unexpected becomes an empty store. Throws on text that isn't JSON. */
 function parse(text: string): SecretData {
   const raw: unknown = JSON.parse(text);
   if (typeof raw !== 'object' || raw === null) return EMPTY();
-  const { keys, instructions } = raw as Record<string, unknown>;
+  const { keys, instructions, memory } = raw as Record<string, unknown>;
   const out = EMPTY();
   if (typeof keys === 'object' && keys !== null) {
     for (const [id, value] of Object.entries(keys)) if (typeof value === 'string' && value) out.keys[id] = value;
   }
   if (typeof instructions === 'string') out.instructions = instructions.slice(0, INSTRUCTIONS_MAX_CHARS);
+  out.memory = normalizeMemory(memory);
   return out;
 }
 
 /**
- * Provider keys and "Your instructions", kept in one file encrypted as a whole through the system keychain.
- * Construct after app.whenReady(): safeStorage availability is only known then.
+ * Provider keys, "Your instructions" and the teammate's memory notes, kept in one file encrypted as a whole through the
+ * system keychain. Construct after app.whenReady(): safeStorage availability is only known then.
  */
 export class SecretStore {
   private data: SecretData = EMPTY();
@@ -94,6 +97,28 @@ export class SecretStore {
     });
   }
 
+  memory(): string[] {
+    return this.available() ? [...this.data.memory] : [];
+  }
+
+  /** The user's edit of the whole list. */
+  async setMemory(items: readonly string[]): Promise<void> {
+    await this.update((d) => {
+      d.memory = normalizeMemory(items);
+    });
+  }
+
+  /** The model's note; only a saved one is written. */
+  async remember(text: string): Promise<Remembered['outcome']> {
+    let outcome: Remembered['outcome'] = 'empty';
+    await this.update((d) => {
+      const r = addMemory(d.memory, text);
+      outcome = r.outcome;
+      d.memory = r.items;
+    });
+    return outcome;
+  }
+
   private load(): void {
     // A missing file means nothing is stored yet. One that can't be decrypted (a keychain prompt the user denied) or
     // parsed reads as empty, but is kept: see keepUnreadable.
@@ -122,7 +147,9 @@ export class SecretStore {
     if (!this.available()) return Promise.reject(new SecretsUnavailableError());
     const run = this.writing.then(async () => {
       await this.keepUnreadable();
-      const next: SecretData = { keys: { ...this.data.keys }, instructions: this.data.instructions };
+      const next: SecretData = {
+        keys: { ...this.data.keys }, instructions: this.data.instructions, memory: [...this.data.memory],
+      };
       change(next);
       await this.write(next);
       // Only a persisted value becomes visible, so a failed write can't report a key that is lost on restart.

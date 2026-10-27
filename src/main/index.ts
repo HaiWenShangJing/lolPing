@@ -1035,7 +1035,7 @@ function start(): void {
   let mateStopping: Promise<unknown> | null = null;
   const syncMate = (): void => {
     const on = !IS_LINUX && featureOn(settings, 'teammate');
-    pets.sync(IS_LINUX ? DEFAULT_PETS : settings.teammate.pets);
+    pets.sync(IS_LINUX ? DEFAULT_PETS : settings.teammate.pets, settings.teammate.petLife);
     if (on && !mate && !mateFailed) {
       if (mateStopping) {
         void mateStopping.then(syncMate);

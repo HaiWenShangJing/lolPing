@@ -121,16 +121,42 @@ export function stepToward(from: Point, to: Point, speed: number, dtMs: number):
 }
 
 const STAND_GAP = 18;
+const STAND_SPACE = 6;
+
+type Size = { width: number; height: number };
 
 /**
  * Where pet `index` of `count` stands (its top-left, DIPs) beside the ping at `ping`: the first on its left, the
  * second on its right, then the rest alternate outward, so no two pets overlap and the ping stays visible between them.
  */
-export function standBeside(ping: Point, index: number, count: number, size: { width: number; height: number }): Point {
+export function standBeside(ping: Point, index: number, count: number, size: Size): Point {
   const right = count > 1 && index % 2 === 1;
-  const out = Math.floor(index / 2) * (size.width + 6);
+  const out = Math.floor(index / 2) * (size.width + STAND_SPACE);
   const x = right ? ping.x + STAND_GAP + out : ping.x - STAND_GAP - size.width - out;
   return { x: Math.round(x), y: Math.round(ping.y - size.height * 0.7) };
+}
+
+/**
+ * Where pet `index` stands while an answer comes: all of them on the ping's left, side by side, so the bubble that
+ * opens on its right never covers one. `areaLeft` is the display's left edge; pets that don't fit before it stand in
+ * a row above.
+ */
+export function standLeftOf(ping: Point, index: number, sizes: readonly Size[], areaLeft: number): Point {
+  const room = ping.x - STAND_GAP - areaLeft;
+  let used = 0;
+  let row = 0;
+  let x = ping.x - STAND_GAP;
+  for (let i = 0; i <= index && i < sizes.length; i++) {
+    const w = sizes[i].width;
+    if (used > 0 && used + w > room) {
+      row++;
+      used = 0;
+    }
+    x = ping.x - STAND_GAP - used - w;
+    used += w + STAND_SPACE;
+  }
+  const height = sizes[Math.min(index, sizes.length - 1)]?.height ?? 0;
+  return { x: Math.round(x), y: Math.round(ping.y - height * 0.7 - row * height * 0.6) };
 }
 
 /** Keeps a window of `size` inside `area`, so a pet sent to the edge of a display still shows. */

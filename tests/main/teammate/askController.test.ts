@@ -12,6 +12,7 @@ import type { SystemTextLayer } from '../../../src/shared/teammate/contextProtoc
 import { receiptPoint, zoomRect, type Rect } from '../../../src/shared/teammate/coords';
 import type { ThreadRecord } from '../../../src/shared/teammate/history';
 import { intentFor } from '../../../src/shared/teammate/intents';
+import { addMemory } from '../../../src/shared/teammate/memory';
 import { bubbleMs } from '../../../src/shared/teammate/line';
 import { DEFAULT_TEAMMATE, type AgentProfile, type BuiltinProfile, type TeammateSettings } from '../../../src/shared/teammate/settings';
 import type { ActionCall, ToolDef } from '../../../src/shared/teammate/tools';
@@ -79,6 +80,8 @@ interface HarnessOptions {
   foregroundPid?: number;
   /** Hears the foreground app of each ask. */
   seenApp?: (app: string) => void;
+  /** Notes saved in earlier asks. */
+  notes?: string[];
 }
 
 interface Screen {
@@ -130,6 +133,10 @@ function harness(opts: HarnessOptions = {}) {
   let gathers = 0;
   let skew = 0;
   const popupsAt: Array<{ x: number; y: number }> = [];
+  /** What the pets were told: where an ask began, how its answer was said, and the end. */
+  const petCalls: Array<[string, unknown]> = [];
+  /** The saved memory notes: what the secret store would hold. */
+  const notes: string[] = [...(opts.notes ?? [])];
   const cardOpens: Array<{ at: { x: number; y: number }; focus: boolean }> = [];
   let bubblePlace: { x: number; y: number } | null = null;
   /** The fake disk: folders and files under the temp folder. */
@@ -152,6 +159,12 @@ function harness(opts: HarnessOptions = {}) {
       available: () => true,
       key: () => (opts.key === undefined ? 'sk-test' : opts.key),
       instructions: () => '',
+      memory: () => [...notes],
+      remember: async (text: string) => {
+        const r = addMemory(notes, text);
+        notes.splice(0, notes.length, ...r.items);
+        return r.outcome;
+      },
     },
     context: {
       foreground: async () => (opts.foregroundHangs
@@ -276,6 +289,12 @@ function harness(opts: HarnessOptions = {}) {
       amend: async (threadId, at, done) => void amends.push({ threadId, at, done }),
     },
     tempDir: () => 'tmp',
+    pet: {
+      goTo: (at) => void petCalls.push(['goTo', at]),
+      cheer: (mood) => void petCalls.push(['cheer', mood ?? null]),
+      release: () => void petCalls.push(['release', null]),
+      setCaptureExcluded: () => undefined,
+    },
     thumbnail: (jpeg) => {
       thumbs.push(jpeg.toString());
       return 'thumb';
@@ -299,7 +318,7 @@ function harness(opts: HarnessOptions = {}) {
 
   const of = (kind: string): unknown[] => log.filter((e) => e[0] === kind).map((e) => e[1]);
   return {
-    ctl, log, requests, signals, adapters, tickets, appends, states, of, popupsAt, disk, dirs, screen, taken, cardOpens,
+    ctl, log, requests, signals, adapters, tickets, appends, states, of, popupsAt, petCalls, notes, disk, dirs, screen, taken, cardOpens,
     dragBubble: (to: { x: number; y: number } | null) => {
       bubblePlace = to;
     },
@@ -323,6 +342,88 @@ afterEach(() => {
 });
 
 describe('AskController', () => {
+  it('tells the pets how the answer was said', async () => {
+    const h = harness({
+      steps: [answers([call('say', { text: 'Fixed it.', mood: 'happy' }), call('say', { text: 'Sorry.', mood: 'shy' })])],
+    });
+    h.ctl.ask([spot('danger')]);
+    await flush();
+    expect(h.petCalls.map(([name]) => name)).toEqual(['goTo', 'cheer']);
+    expect(h.petCalls[1]).toEqual(['cheer', 'shy']);
+  });
+
+  it('cheers without a mood when the model gave none', async () => {
+    const h = harness({ steps: [answers([call('say', { text: 'Line 3.' })])] });
+    h.ctl.ask([spot('danger')]);
+    await flush();
+    expect(h.petCalls[1]).toEqual(['cheer', null]);
+  });
+
+  describe('memory', () => {
+    const lastResult = (h: ReturnType<typeof harness>, id: string): unknown => {
+      // The turns array keeps growing after the request, so look for the tool turn rather than the last turn.
+      const tool = h.requests[1]?.turns.findLast((t) => t.role === 'tool');
+      return tool?.role === 'tool' ? tool.results.find((r) => r.id === id)?.content : undefined;
+    };
+
+    it('offers no `remember` and shows no notes while memory is off', async () => {
+      const h = harness({ notes: ['Call me Sam'], steps: [answers([call('say', { text: 'Hi.' })])] });
+      h.ctl.ask([spot('danger')]);
+      await flush();
+      expect(h.requests[0].tools.map((d) => d.name)).not.toContain('remember');
+      expect(h.requests[0].system).not.toContain('Call me Sam');
+      expect(h.requests[0].system).not.toContain('What you remember');
+    });
+
+    it('puts the saved notes in the prompt and offers `remember` when memory is on', async () => {
+      const h = harness({
+        teammate: { memory: true }, notes: ['Call me Sam', 'Answers in Chinese'], steps: [answers([call('say', { text: 'Hi.' })])],
+      });
+      h.ctl.ask([spot('danger')]);
+      await flush();
+      expect(h.requests[0].tools.map((d) => d.name)).toContain('remember');
+      expect(h.requests[0].system).toContain('- Call me Sam\n- Answers in Chinese');
+    });
+
+    it('saves what the model remembers and tells it so', async () => {
+      const h = harness({
+        teammate: { memory: true },
+        steps: [
+          answers([call('remember', { text: 'Prefers short answers' }, 'm')]),
+          answers([call('say', { text: 'Ok.' })]),
+        ],
+      });
+      h.ctl.ask([spot('danger')]);
+      await flush();
+      expect(h.notes).toEqual(['Prefers short answers']);
+      expect(lastResult(h, 'm')).toContainEqual({ text: 'Remembered.' });
+    });
+
+    it('keeps a secret out and says why', async () => {
+      const h = harness({
+        teammate: { memory: true },
+        steps: [
+          answers([call('remember', { text: 'My password is hunter2' }, 'm')]),
+          answers([call('say', { text: 'Ok.' })]),
+        ],
+      });
+      h.ctl.ask([spot('danger')]);
+      await flush();
+      expect(h.notes).toEqual([]);
+      expect(JSON.stringify(lastResult(h, 'm'))).toContain('Not remembered');
+    });
+
+    it('does not take a note while memory is off', async () => {
+      const h = harness({
+        steps: [answers([call('remember', { text: 'Prefers short answers' }, 'm')]), answers([call('say', { text: 'Ok.' })])],
+      });
+      h.ctl.ask([spot('danger')]);
+      await flush();
+      expect(h.notes).toEqual([]);
+      expect(lastResult(h, 'm')).toContainEqual({ text: 'Not available.' });
+    });
+  });
+
   it('places the receipt when the provider accepts, then the line and pings', async () => {
     const h = harness({
       steps: [answers([

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside, stepToward,
+  keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside, standLeftOf, stepToward,
 } from '../../../src/shared/teammate/pet';
 
 const pack = (over: Record<string, unknown> = {}) => ({
@@ -88,6 +88,36 @@ describe('stepToward', () => {
 
   it('arrives exactly instead of overshooting', () => {
     expect(stepToward({ x: 0, y: 0 }, { x: 10, y: 0 }, 900, 100)).toEqual({ at: { x: 10, y: 0 }, arrived: true });
+  });
+});
+
+describe('standLeftOf', () => {
+  const size = { width: 100, height: 100 };
+  const four = [size, size, size, size];
+
+  it('keeps every pet left of the ping, side by side', () => {
+    const xs = [0, 1, 2, 3].map((i) => standLeftOf({ x: 800, y: 400 }, i, four, 0).x);
+    for (const x of xs) expect(x + size.width).toBeLessThanOrEqual(800);
+    const sorted = [...xs].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(size.width);
+  });
+
+  it('stands a lone pet where standBeside puts the first', () => {
+    expect(standLeftOf({ x: 500, y: 400 }, 0, [size], 0)).toEqual(standBeside({ x: 500, y: 400 }, 0, 1, size));
+  });
+
+  it('puts the pets that do not fit before the display edge in a row above', () => {
+    const at = (i: number) => standLeftOf({ x: 260, y: 400 }, i, four, 0);
+    expect(at(0).y).toBe(at(1).y);
+    expect(at(2).y).toBeLessThan(at(0).y);
+    expect(at(2).x).toBe(at(0).x);
+  });
+
+  it('adds up the width of each pet, so pets of different sizes still do not overlap', () => {
+    const sizes = [{ width: 100, height: 100 }, { width: 160, height: 160 }];
+    const a = standLeftOf({ x: 600, y: 400 }, 0, sizes, 0);
+    const b = standLeftOf({ x: 600, y: 400 }, 1, sizes, 0);
+    expect(b.x + 160).toBeLessThanOrEqual(a.x);
   });
 });
 

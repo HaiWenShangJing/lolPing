@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +17,48 @@ const fakeCrypto = (available = true): Crypto => ({
 const file = () => join(mkdtempSync(join(tmpdir(), 'lolping-secrets-')), 'teammate', 'secrets');
 
 describe('SecretStore', () => {
+  it('keeps the memory notes encrypted, and reads them back', async () => {
+    const path = file();
+    const store = new SecretStore(path, fakeCrypto());
+    expect(store.memory()).toEqual([]);
+    expect(await store.remember('Call me Sam')).toBe('saved');
+    expect(await store.remember('call me sam')).toBe('known');
+    expect(await store.remember('password is hunter2')).toBe('secret');
+    await store.setMemory([' Answers in Chinese ', '', 'Call me Sam']);
+    expect(readFileSync(path).toString('latin1')).not.toContain('Call me Sam');
+    expect(new SecretStore(path, fakeCrypto()).memory()).toEqual(['Answers in Chinese', 'Call me Sam']);
+    await store.setMemory([]);
+    expect(new SecretStore(path, fakeCrypto()).memory()).toEqual([]);
+  });
+
+  it('leaves keys and instructions alone when memory changes', async () => {
+    const path = file();
+    const store = new SecretStore(path, fakeCrypto());
+    await store.setKey('p1', 'sk-abc');
+    await store.setInstructions('call me captain');
+    await store.remember('Likes tea');
+    const again = new SecretStore(path, fakeCrypto());
+    expect(again.key('p1')).toBe('sk-abc');
+    expect(again.instructions()).toBe('call me captain');
+    expect(again.memory()).toEqual(['Likes tea']);
+  });
+
+  it('reads a file from before memory existed as having no notes', () => {
+    const path = file();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, fakeCrypto().encryptString(JSON.stringify({ keys: { p1: 'sk-abc' }, instructions: 'hi' })));
+    const store = new SecretStore(path, fakeCrypto());
+    expect(store.memory()).toEqual([]);
+    expect(store.key('p1')).toBe('sk-abc');
+  });
+
+  it('refuses to remember when the system cannot encrypt', async () => {
+    const store = new SecretStore(file(), fakeCrypto(false));
+    expect(store.memory()).toEqual([]);
+    await expect(store.remember('Likes tea')).rejects.toBeInstanceOf(SecretsUnavailableError);
+    await expect(store.setMemory(['a'])).rejects.toBeInstanceOf(SecretsUnavailableError);
+  });
+
   it('round-trips a key and the instructions', async () => {
     const path = file();
     const store = new SecretStore(path, fakeCrypto());

@@ -19,6 +19,12 @@ describe('normalizeTeammate', () => {
     expect(normalizeTeammate(undefined, { ...win, platform: 'mac' })).toEqual({ ...DEFAULT_TEAMMATE, askClick: false, askDoubleTap: true });
   });
 
+  it('keeps idle life on and memory off unless the file says otherwise', () => {
+    expect(normalizeTeammate({}, win)).toMatchObject({ petLife: true, memory: false });
+    expect(normalizeTeammate({ petLife: false, memory: true }, win)).toMatchObject({ petLife: false, memory: true });
+    expect(normalizeTeammate({ petLife: 'no', memory: 1 }, win)).toMatchObject({ petLife: true, memory: false });
+  });
+
   it('turns double tap on by default only on macOS', () => {
     expect(normalizeTeammate({}, win).askDoubleTap).toBe(false);
     expect(normalizeTeammate({}, { ...win, platform: 'mac' }).askDoubleTap).toBe(true);

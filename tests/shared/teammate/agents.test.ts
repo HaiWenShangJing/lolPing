@@ -49,7 +49,7 @@ const CLAUDE_ARGV = [
   '--allowedTools',
   'mcp__lolping__say,mcp__lolping__ping,mcp__lolping__emote,mcp__lolping__answer,mcp__lolping__look,'
     + 'mcp__lolping__read_file,mcp__lolping__copy,mcp__lolping__paste,mcp__lolping__fill,mcp__lolping__event,'
-    + 'mcp__lolping__open',
+    + 'mcp__lolping__open,mcp__lolping__remember',
   '--permission-prompt-tool', 'mcp__lolping__consent', '--output-format', 'stream-json', '--verbose',
 ];
 
@@ -192,7 +192,9 @@ describe('agents', () => {
     expect(argv('gemini', null)).toEqual(['-p', p, '--output-format', 'stream-json']);
     expect(argv('gemini', 'g1')).toEqual(['-p', p, '--output-format', 'stream-json', '--resume', 'g1']);
     expect(argv('qwen', 'q1')).toEqual(['-p', p, '--output-format', 'stream-json', '--resume', 'q1']);
-    expect(argv('copilot', null)).toEqual(['-p', p, '--additional-mcp-config', `@${cfg}`, '--allow-tool', 'lolping']);
+    expect(argv('copilot', null)).toEqual([
+      '-p', p, '--additional-mcp-config', `@${cfg}`, '--allow-tool', 'lolping', '--output-format', 'json',
+    ]);
     expect(argv('copilot', 'c1').slice(-2)).toEqual(['--resume', 'c1']);
     expect(argv('cursor', null)).toEqual(['-p', p, '--output-format', 'stream-json']);
     expect(argv('cursor', 'u1').slice(-2)).toEqual(['--resume', 'u1']);
@@ -263,7 +265,10 @@ describe('agents', () => {
     expect(AGENT_PRESETS.cursor.parse('{"type":"system","session_id":"u-1"}')).toEqual({ session: 'u-1' });
     expect(AGENT_PRESETS.droid.parse('{"type":"system","session_id":"d-1"}')).toEqual({ session: 'd-1' });
     expect(AGENT_PRESETS.opencode.parse('{"type":"step_start","sessionID":"ses_1"}')).toEqual({ session: 'ses_1' });
-    for (const id of ['copilot', 'kimi', 'auggie', 'goose', 'qoder', 'kiro'] as const) {
+    expect(AGENT_PRESETS.copilot.parse('{"type":"result","sessionId":"c-1","exitCode":0}')).toEqual({ session: 'c-1' });
+    expect(AGENT_PRESETS.copilot.parse('{"type":"assistant.message","sessionId":"c-2"}')).toEqual({});
+    expect(AGENT_PRESETS.copilot.parse('not json')).toEqual({});
+    for (const id of ['kimi', 'auggie', 'goose', 'qoder', 'kiro'] as const) {
       expect(AGENT_PRESETS[id].parse('{"type":"x","session_id":"s","sessionId":"s"}'), id).toEqual({});
     }
   });
@@ -305,8 +310,8 @@ describe('agents', () => {
     );
   });
 
-  it('marks only Claude Code and dsh as checked', () => {
-    expect(AGENT_PRESET_IDS.filter((id) => AGENT_PRESETS[id].checked)).toEqual(['claude', 'dsh']);
+  it('marks only Claude Code, dsh and Copilot CLI as checked', () => {
+    expect(AGENT_PRESET_IDS.filter((id) => AGENT_PRESETS[id].checked)).toEqual(['claude', 'dsh', 'copilot']);
     expect(AGENT_PRESET_IDS.filter((id) => AGENT_PRESETS[id].consent)).toEqual(['claude']);
     expect(AGENT_PRESET_IDS.filter((id) => AGENT_PRESETS[id].approvals === 'asks')).toEqual(['claude']);
     expect(AGENT_PRESET_IDS.filter((id) => AGENT_PRESETS[id].approvals === 'none')).toEqual(['dsh']);

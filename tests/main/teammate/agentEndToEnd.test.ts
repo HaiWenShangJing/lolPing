@@ -70,7 +70,9 @@ describe('an agent answering an ask', () => {
       settings: () => settings,
       enabled: () => true,
       lang: () => 'en',
-      secrets: { available: () => true, key: () => null, instructions: () => '' },
+      secrets: {
+        available: () => true, key: () => null, instructions: () => '', memory: () => [], remember: async () => 'saved' as const,
+      },
       context: {
         foreground: async () => ({ app: 'notepad.exe', title: 'notes.txt', window: '1', pid: 4242 }),
         capture: async (req) => {

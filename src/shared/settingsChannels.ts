@@ -38,6 +38,8 @@ export const SETTINGS_CH = {
   teammateCheckKey: 'teammate:checkKey',
   teammateSetInstructions: 'teammate:setInstructions',
   teammateInstructions: 'teammate:instructions',
+  teammateSetMemory: 'teammate:setMemory',
+  teammateMemory: 'teammate:memory',
   teammateUsage: 'teammate:usage',
   teammateHistory: 'teammate:history',
   teammateStatus: 'teammate:status',

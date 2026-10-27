@@ -1,6 +1,7 @@
 import { Button, Combobox, Dropdown, Input, Option, OptionGroup, Switch, Textarea } from '@fluentui/react-components';
 import {
-  Bot24Regular, ClipboardPaste24Regular, Color24Regular, CursorClick24Regular, DataUsage24Regular, DocumentText24Regular, Emoji24Regular,
+  Bot24Regular, Brain24Regular, ClipboardPaste24Regular, Color24Regular, CursorClick24Regular, DataUsage24Regular,
+  DocumentText24Regular, Emoji24Regular,
   Eye24Regular, Globe24Regular, History24Regular, Keyboard24Regular, MusicNote224Regular, Person24Regular,
   PlugConnected24Regular, ScanText24Regular, ShieldKeyhole24Regular, Sparkle24Regular, TextEditStyle24Regular, TextField24Regular,
 } from '@fluentui/react-icons';
@@ -11,6 +12,7 @@ import { sameTrigger, triggerLabel, type Settings, type TriggerKey } from '../..
 import { defaultAfterAdd, newAgentProfile } from '../../../shared/teammate/agentProfiles';
 import { AGENT_PRESET_IDS, AGENT_PRESETS, type AgentPresetId } from '../../../shared/teammate/agents';
 import { parsePermissionKey } from '../../../shared/teammate/doRules';
+import { MEMORY_MAX_ITEMS, memoryText, parseMemoryText } from '../../../shared/teammate/memory';
 import { needsKey, PROVIDERS, visionGuess, type ProviderId } from '../../../shared/teammate/providers';
 import {
   canDoubleTap, INTENT_INSTRUCTION_MAX, INTENT_LABEL_MAX, isBuiltin, TAG_NAME_MAX, type AgentProfile, type BuiltinProfile,
@@ -162,6 +164,50 @@ function IntentRow({ id, override, patch }: {
         onBlur={() => instruction !== (override?.instruction ?? '') && save({ instruction })} />
       <Button size="small" appearance="subtle" disabled={!override} onClick={() => patch(null)}>{m.intentReset}</Button>
     </div>
+  );
+}
+
+function MemoryCard({ s, patch, secrets }: { s: TeammateSettings; patch: Patch; secrets: boolean }) {
+  const t = useText();
+  const m = t.teammate.settings;
+  const [saved, setSaved] = useState('');
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const read = () => void api.getTeammateMemory().then((notes) => {
+    const text = memoryText(notes);
+    setSaved(text);
+    setDraft(text);
+  });
+  useEffect(() => {
+    read();
+    // The teammate adds notes while the window is open: read them again when it regains focus.
+    window.addEventListener('focus', read);
+    return () => window.removeEventListener('focus', read);
+  }, []);
+  const store = async (text: string) => {
+    const r = await api.setTeammateMemory(parseMemoryText(text));
+    setError(r.ok ? null : m.memoryUnavailable);
+    if (r.ok) read();
+  };
+  return (
+    <ExpanderRow icon={<Brain24Regular />} title={m.memory} description={m.memoryDesc}
+      control={<OnOffSwitch checked={s.memory} label={m.memory} disabled={!secrets}
+        onChange={(memory) => patch({ memory })} />}>
+      <div className="expPane">
+        <Textarea className="mateInstructions" value={draft} placeholder={m.memoryPlaceholder} resize="vertical"
+          aria-label={m.memoryNotes} onChange={(_, d) => setDraft(d.value)} />
+        <div className="mateRow">
+          <Button disabled={draft === saved} onClick={() => void store(draft)}>
+            {draft === saved && saved ? m.instructionsSaved : m.instructionsSave}
+          </Button>
+          <Button appearance="subtle" disabled={saved === '' && draft === ''} onClick={() => void store('')}>
+            {m.memoryClear}
+          </Button>
+          <span className="desc">{m.memoryCount(parseMemoryText(draft).length, MEMORY_MAX_ITEMS)}</span>
+          {error ? <span className="weImportError">{error}</span> : null}
+        </div>
+      </div>
+    </ExpanderRow>
   );
 }
 
@@ -538,6 +584,7 @@ export function TeammateSection({ settings: s, update }: { settings: Settings; u
         </div>
       </ExpanderRow>
       <InstructionsCard />
+      <MemoryCard s={mate} patch={patch} secrets={secrets} />
       <PermissionsCard s={mate} patch={patch} />
       <ExpanderRow icon={<PlugConnected24Regular />} title={m.agentsPing} description={m.agentsPingDesc}
         control={<OnOffSwitch checked={mate.agentsCanPing} label={m.agentsPing}

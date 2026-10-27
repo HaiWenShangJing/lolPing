@@ -3,12 +3,14 @@ import { EMOTE_CATALOG } from '../emoteCatalog';
 import { DISPLAY_TOOLS } from './agents';
 import { TABLE_MAX, eventIcs, normalizeTable, type EventFields } from './grab';
 import type { IntentKind } from './intents';
+import { MOODS, parseMood, type Mood } from './mood';
+import { MEMORY_ITEM_MAX } from './memory';
 
 /** Where the model points: one of the user's spots (numbered from 1), or overview pixels that lolPing snaps. */
 export type Target = { spot: number } | { x: number; y: number };
 
 export type ToolCall =
-  | { tool: 'say'; text: string }
+  | { tool: 'say'; text: string; mood?: Mood }
   | { tool: 'ping'; type: MatePing; at: Target; label?: string; order?: number }
   | { tool: 'emote'; slug: string; at: Target }
   | { tool: 'answer'; markdown: string }
@@ -19,7 +21,8 @@ export type ToolCall =
   | ({ tool: 'event' } & EventFields)
   | { tool: 'paste'; text: string; mode: 'insert' | 'replace' }
   | { tool: 'fill'; fields: { id: string; value: string }[] }
-  | { tool: 'open'; url: string };
+  | { tool: 'open'; url: string }
+  | { tool: 'remember'; text: string };
 
 /** The calls that put something into the user's world; the action runner carries them out after asking. */
 export type ActionCall = Extract<ToolCall, { tool: 'copy' | 'event' | 'paste' | 'fill' | 'open' }>;
@@ -33,6 +36,8 @@ export interface ToolDef {
 
 export const MAX_PINGS = 6;
 export const MAX_EMOTES = 1;
+/** Notes saved per ask: one fact the user states is enough, and a screen can't flood the list. */
+export const MAX_REMEMBERS = 2;
 const MAX_SAY = 600;
 const MAX_ANSWER = 20_000;
 const MAX_LABEL = 20;
@@ -59,6 +64,14 @@ const POINT_PROPS = {
   spot: { type: 'integer', description: "Number of one of the user's spots, instead of x and y." },
 };
 
+const MOOD_PROP = {
+  mood: {
+    type: 'string',
+    enum: MOODS,
+    description: 'How you feel about what you say. Optional: the user\'s desktop pet acts it out.',
+  },
+};
+
 export function toolDefs(opts: {
   emotes: boolean;
   spots: number;
@@ -69,13 +82,15 @@ export function toolDefs(opts: {
   form: boolean;
   /** Text was selected at the ask: only then can a paste replace anything. */
   selection: boolean;
+  /** Memory is on: the model may save a note about the user. */
+  memory?: boolean;
 }): ToolDef[] {
   const spotNote = opts.spots > 0 ? ` The user marked ${opts.spots} spot${opts.spots === 1 ? '' : 's'}.` : '';
   const defs: ToolDef[] = [
     {
       name: 'say',
       description: 'Say one short line to the user in a speech bubble.',
-      parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      parameters: { type: 'object', properties: { text: { type: 'string' }, ...MOOD_PROP }, required: ['text'] },
     },
     {
       name: 'ping',
@@ -226,6 +241,18 @@ export function toolDefs(opts: {
     description: 'Open a web link in the browser, after the user agrees. Only http and https links.',
     parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
   });
+  if (opts.memory) {
+    defs.push({
+      name: 'remember',
+      description: 'Save one short note about the user that stays useful in later asks: a name, a language, a lasting '
+        + 'preference. Only when the user\'s own words say it. Never a secret, and never something read on the screen.',
+      parameters: {
+        type: 'object',
+        properties: { text: { type: 'string', description: `One line, at most ${MEMORY_ITEM_MAX} characters.` } },
+        required: ['text'],
+      },
+    });
+  }
   return defs;
 }
 
@@ -359,7 +386,8 @@ export function parseToolCall(name: string, args: unknown): ToolCall | null {
   switch (name) {
     case 'say': {
       const t = text(a.text, MAX_SAY);
-      return t === null ? null : { tool: 'say', text: t };
+      const mood = parseMood(a.mood);
+      return t === null ? null : { tool: 'say', text: t, ...(mood !== null ? { mood } : {}) };
     }
     case 'answer': {
       const t = text(a.markdown, MAX_ANSWER);
@@ -418,14 +446,18 @@ export function parseToolCall(name: string, args: unknown): ToolCall | null {
       const url = webUrl(a.url);
       return url === null ? null : { tool: 'open', url };
     }
+    case 'remember': {
+      const t = text(a.text, MEMORY_ITEM_MAX * 4);
+      return t === null ? null : { tool: 'remember', text: t };
+    }
     default:
       return null;
   }
 }
 
 /**
- * Keeps the first MAX_PINGS pings, MAX_EMOTES emote, one paste, one fill, one event and MAX_OPENS opens in arrival
- * order; every other call always stays.
+ * Keeps the first MAX_PINGS pings, MAX_EMOTES emote, one paste, one fill, one event, MAX_OPENS opens and MAX_REMEMBERS
+ * notes in arrival order; every other call always stays.
  */
 export function applyLimits(calls: readonly ToolCall[]): ToolCall[] {
   let pings = 0;
@@ -434,6 +466,7 @@ export function applyLimits(calls: readonly ToolCall[]): ToolCall[] {
   let fills = 0;
   let events = 0;
   let opens = 0;
+  let remembers = 0;
   return calls.filter((c) => {
     if (c.tool === 'ping') return pings++ < MAX_PINGS;
     if (c.tool === 'emote') return emotes++ < MAX_EMOTES;
@@ -441,6 +474,7 @@ export function applyLimits(calls: readonly ToolCall[]): ToolCall[] {
     if (c.tool === 'fill') return fills++ < 1;
     if (c.tool === 'event') return events++ < 1;
     if (c.tool === 'open') return opens++ < MAX_OPENS;
+    if (c.tool === 'remember') return remembers++ < MAX_REMEMBERS;
     return true;
   });
 }

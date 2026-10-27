@@ -55,7 +55,9 @@ function harness(opts: Options = {}) {
     settings: () => settings,
     enabled: () => enabled,
     lang: () => 'en',
-    secrets: { available: () => true, key: () => 'sk-test', instructions: () => '' },
+    secrets: {
+      available: () => true, key: () => 'sk-test', instructions: () => '', memory: () => [], remember: async () => 'saved' as const,
+    },
     context: {
       foreground: () => (opts.holdAsk
         ? new Promise(() => undefined)

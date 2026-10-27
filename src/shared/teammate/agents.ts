@@ -107,6 +107,12 @@ function initLine(line: string): AgentParsed {
   return o && (o.type === 'init' || o.subtype === 'init') ? parsed(text(o.session_id)) : {};
 }
 
+/** Copilot CLI's JSON stream ends with a `result` line that carries the session id. */
+function copilotLine(line: string): AgentParsed {
+  const o = jsonLine(line);
+  return o && o.type === 'result' ? parsed(text(o.sessionId)) : {};
+}
+
 const noParse = (): AgentParsed => ({});
 const noEnv = (): Record<string, string> => ({});
 const noConfig = (): string | null => null;
@@ -168,7 +174,7 @@ function dshPatch(s: AgentRunSpec): string {
 
 // lolPing's own actions ask the user in lolPing (a copy only fills the clipboard), so Claude Code's card would be a
 // second one. Never consent: that is the prompt itself.
-const CLAUDE_TOOLS = [...DISPLAY_TOOLS, 'look', 'read_file', 'copy', 'paste', 'fill', 'event', 'open']
+const CLAUDE_TOOLS = [...DISPLAY_TOOLS, 'look', 'read_file', 'copy', 'paste', 'fill', 'event', 'open', 'remember']
   .map((t) => `mcp__lolping__${t}`).join(',');
 
 function claudeParse(line: string): AgentParsed {
@@ -264,15 +270,15 @@ export const AGENT_PRESETS: Readonly<Record<AgentPresetId, AgentPreset>> = {
     openArgs: (id) => ['--resume', id],
   },
   copilot: {
-    id: 'copilot', name: 'Copilot CLI', bin: 'copilot', checked: false, consent: false, mcp: 'run', approvals: 'own',
+    id: 'copilot', name: 'Copilot CLI', bin: 'copilot', checked: true, consent: false, mcp: 'run', approvals: 'own',
     args: (s) => [
       '-p', s.prompt, '--additional-mcp-config', `@${s.mcpConfigPath}`, '--allow-tool', 'lolping',
-      ...withResume(s, ['--resume']),
+      '--output-format', 'json', ...withResume(s, ['--resume']),
     ],
     // Copilot CLI wants an explicit tool list on each server.
     configFile: (s) => stdioConfig(s, { tools: ['*'] }),
     env: noEnv,
-    parse: noParse,
+    parse: copilotLine,
     openArgs: (id) => ['--resume', id],
   },
   cursor: {

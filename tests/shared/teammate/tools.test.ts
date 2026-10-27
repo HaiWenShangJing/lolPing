@@ -26,6 +26,37 @@ describe('tools', () => {
     expect(parseToolCall('look', { x: 1, y: 2, w: 300, h: 200 })).toEqual({ tool: 'look', x: 1, y: 2, w: 300, h: 200 });
   });
 
+  it('reads a mood on say and drops one it does not know', () => {
+    expect(parseToolCall('say', { text: 'Thanks!', mood: 'love' })).toEqual({ tool: 'say', text: 'Thanks!', mood: 'love' });
+    expect(parseToolCall('say', '{"text":"hm","mood":"confused"}')).toEqual({ tool: 'say', text: 'hm', mood: 'confused' });
+    expect(parseToolCall('say', { text: 'hi', mood: 'ecstatic' })).toEqual({ tool: 'say', text: 'hi' });
+    expect(parseToolCall('say', { text: 'hi', mood: 7 })).toEqual({ tool: 'say', text: 'hi' });
+    const say = toolDefs({ ...OFF }).find((d) => d.name === 'say');
+    expect(Object.keys((say?.parameters.properties ?? {}) as Record<string, unknown>)).toEqual(['text', 'mood']);
+    expect((say?.parameters.required as string[])).toEqual(['text']);
+  });
+
+  it('offers `remember` only when memory is on, and never to a visiting agent', () => {
+    expect(names()).not.toContain('remember');
+    expect(names({ memory: false })).not.toContain('remember');
+    expect(names({ memory: true })).toContain('remember');
+    expect(visitorToolDefs(true).map((d) => d.name)).not.toContain('remember');
+  });
+
+  it('parses a remembered note, trimmed and cut, and refuses a blank one', () => {
+    expect(parseToolCall('remember', { text: '  Call me Sam  ' })).toEqual({ tool: 'remember', text: 'Call me Sam' });
+    expect(parseToolCall('remember', '{"text":"Likes tea"}')).toEqual({ tool: 'remember', text: 'Likes tea' });
+    expect(parseToolCall('remember', { text: '   ' })).toBeNull();
+    expect(parseToolCall('remember', { text: 4 })).toBeNull();
+    const long = parseToolCall('remember', { text: 'a'.repeat(5000) });
+    expect(long?.tool === 'remember' && long.text.length).toBeLessThanOrEqual(640);
+  });
+
+  it('keeps only the first two notes an ask saves', () => {
+    const notes: ToolCall[] = ['a', 'b', 'c'].map((text) => ({ tool: 'remember', text }));
+    expect(applyLimits(notes)).toEqual(notes.slice(0, 2));
+  });
+
   it('reads spot and x, y targets and an old mark as a spot', () => {
     expect(parseToolCall('ping', { type: 'danger', spot: 2 })).toMatchObject({ at: { spot: 2 } });
     expect(parseToolCall('ping', { type: 'danger', mark: 1 })).toMatchObject({ at: { spot: 1 } });

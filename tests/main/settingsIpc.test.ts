@@ -416,6 +416,12 @@ describe('teammate IPC', () => {
     expect(await call(SETTINGS_CH.teammateInstructions)).toBe('');
     expect(await call(SETTINGS_CH.teammateSetInstructions, 'Call me Sam.')).toEqual({ ok: true });
     expect(await call(SETTINGS_CH.teammateInstructions)).toBe('Call me Sam.');
+    for (const raw of [5, null, 'a', ['a', 7], Array.from({ length: 81 }, () => 'a')]) {
+      expect(await call(SETTINGS_CH.teammateSetMemory, raw)).toEqual({ ok: false });
+    }
+    expect(await call(SETTINGS_CH.teammateMemory)).toEqual([]);
+    expect(await call(SETTINGS_CH.teammateSetMemory, [' Likes tea ', '', 'Call me Sam'])).toEqual({ ok: true });
+    expect(await call(SETTINGS_CH.teammateMemory)).toEqual(['Likes tea', 'Call me Sam']);
     for (const op of ['format', null, { op: 'clear' }]) await call(SETTINGS_CH.teammateHistory, op);
     expect(historyOps).toEqual([]);
     expect(await call(SETTINGS_CH.teammateHistory, 'clear')).toBe(true);
@@ -428,6 +434,8 @@ describe('teammate IPC', () => {
     expect(await call(SETTINGS_CH.teammateSetKey, 'p1', KEY)).toEqual({ ok: false, error: 'unavailable' });
     expect(await call(SETTINGS_CH.teammateHasKey, 'p1')).toBe(false);
     expect(await call(SETTINGS_CH.teammateInstructions)).toBe('');
+    expect(await call(SETTINGS_CH.teammateSetMemory, ['a'])).toEqual({ ok: false, error: 'unavailable' });
+    expect(await call(SETTINGS_CH.teammateMemory)).toEqual([]);
   });
 });
 
@@ -442,6 +450,7 @@ describe('teammate IPC without keys', () => {
     const secrets = {
       available: () => available, key: () => null, hasKey: () => false,
       setKey: async () => undefined, instructions: () => '', setInstructions: async () => undefined,
+      memory: () => [], setMemory: async () => undefined,
     };
     let on = true;
     let screen: boolean | null = null;

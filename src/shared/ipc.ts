@@ -324,6 +324,9 @@ export interface SettingsApi {
   setTeammateInstructions(text: string): Promise<SecretResult>;
   /** Your instructions: the user's own text, so this window may read it back. */
   getTeammateInstructions(): Promise<string>;
+  /** The notes the teammate saved about the user, replaced as a whole by the user's edit. */
+  setTeammateMemory(notes: string[]): Promise<SecretResult>;
+  getTeammateMemory(): Promise<string[]>;
   getTeammateUsage(): Promise<UsageMonth>;
   /** Resolves true when it was carried out (Clear can fail). */
   teammateHistory(op: TeammateHistoryOp): Promise<boolean>;

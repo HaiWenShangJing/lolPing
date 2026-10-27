@@ -80,6 +80,10 @@ export interface TeammateSettings {
   receiptSound: boolean;
   /** Desktop pets that run to the teammate's ping: each character on or off, and the animation it rests in. */
   pets: PetsSetting;
+  /** Resting pets sometimes play one of their animations, and turn to look at the pointer. */
+  petLife: boolean;
+  /** The teammate may save short notes about the user and reads them back in later asks. Off until the user turns it on. */
+  memory: boolean;
   /** keepDays null keeps threads until the thread cap removes them. */
   history: { on: boolean; keepDays: number | null; maxThreads: number; paused: boolean };
   permissions: string[];
@@ -107,6 +111,8 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   emotes: true,
   receiptSound: true,
   pets: DEFAULT_PETS,
+  petLife: true,
+  memory: false,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
   firstRunDone: false,
@@ -315,6 +321,8 @@ export function normalizeTeammate(
     emotes: bool(r.emotes, DEFAULT_TEAMMATE.emotes),
     receiptSound: bool(r.receiptSound, DEFAULT_TEAMMATE.receiptSound),
     pets: normalizePets(r.pets),
+    petLife: bool(r.petLife, DEFAULT_TEAMMATE.petLife),
+    memory: bool(r.memory, DEFAULT_TEAMMATE.memory),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),
     firstRunDone: bool(r.firstRunDone, DEFAULT_TEAMMATE.firstRunDone),
