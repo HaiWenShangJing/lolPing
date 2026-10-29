@@ -16,11 +16,15 @@ export const isPetTool = (name: string): name is PetTool => (PET_TOOLS as readon
 export const PET_PLACES = ['home', 'cursor', 'left', 'right', 'top', 'center', 'random'] as const;
 export type PetPlace = (typeof PET_PLACES)[number];
 
-export type PetTarget = { place: PetPlace } | { xPct: number; yPct: number };
+/** Where a pet goes: a named place, a spot on the display, or beside another pet. */
+export type PetTarget = { place: PetPlace } | { xPct: number; yPct: number } | { beside: PetId };
+
+/** Who a line is meant for: one pet, or all of them. Without it a pet is just speaking up. */
+export type SayTo = PetId | 'all';
 
 export type PetCommand =
   | { kind: 'status' }
-  | { kind: 'say'; pet: PetId | null; text: string; mood: Mood | null }
+  | { kind: 'say'; pet: PetId | null; text: string; mood: Mood | null; to?: SayTo | null }
   | { kind: 'walk'; pet: PetId | null; to: PetTarget }
   | { kind: 'play'; pet: PetId | null; anim: string | null; mood: Mood | null };
 
@@ -117,12 +121,15 @@ export function parsePetCall(name: string, args: unknown): PetCommand | null {
   const who = pet ?? null;
   if (name === 'pet_say') {
     const text = typeof raw.text === 'string' ? raw.text.trim().slice(0, PET_SAY_MAX) : '';
-    return text ? { kind: 'say', pet: who, text, mood: parseMood(raw.mood) } : null;
+    const to = raw.to === 'all' ? 'all' : (PET_IDS.find((id) => id === raw.to) ?? null);
+    return text ? { kind: 'say', pet: who, text, mood: parseMood(raw.mood), ...(to === null ? {} : { to }) } : null;
   }
   if (name === 'pet_walk') {
     const xPct = pct(raw.x);
     const yPct = pct(raw.y);
     if (xPct !== null && yPct !== null) return { kind: 'walk', pet: who, to: { xPct, yPct } };
+    const beside = PET_IDS.find((id) => id === raw.beside);
+    if (beside) return beside === who ? null : { kind: 'walk', pet: who, to: { beside } };
     const place = PET_PLACES.find((p) => p === raw.to);
     return place ? { kind: 'walk', pet: who, to: { place } } : null;
   }
@@ -145,16 +152,25 @@ type Rect = Point & Size;
 
 const EDGE_GAP = 12;
 const SPREAD_GAP = 8;
+const NEXT_TO_GAP = 10;
 
 /**
  * Where pet `index` of `count` goes for `target` (its top-left, DIPs). `area` is the main display's work area; `home`
- * is this pet's own home. Pets sent together stand in a row so they don't pile up.
+ * is this pet's own home. Pets sent together stand in a row so they don't pile up. `beside` gives where another pet
+ * is (or is going): a pet sent to it stands on its right, or on its left when that is off the display.
  */
 export function walkSpot(
   target: PetTarget, size: Size, index: number, count: number,
-  where: { area: Rect; cursor: { at: Point; area: Rect }; home: Point; random: () => number },
+  where: { area: Rect; cursor: { at: Point; area: Rect }; home: Point; random: () => number; beside?: (id: PetId) => Rect | null },
 ): Point {
   const { area } = where;
+  if ('beside' in target) {
+    const other = where.beside?.(target.beside);
+    if (!other) return where.home;
+    const right = other.x + other.width + NEXT_TO_GAP;
+    const x = right + size.width <= area.x + area.width ? right : other.x - NEXT_TO_GAP - size.width;
+    return keepInside({ x, y: other.y + other.height - size.height }, size, area);
+  }
   if ('place' in target && target.place === 'home') return where.home;
   if ('place' in target && target.place === 'cursor') {
     return keepInside(standBeside(where.cursor.at, index, count, size), size, where.cursor.area);

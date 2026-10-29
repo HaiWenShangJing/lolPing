@@ -333,8 +333,15 @@ export class PetWindows {
     const cursor = screen.getCursorScreenPoint();
     const near = { at: cursor, area: screen.getDisplayNearestPoint(cursor).workArea };
     const home = 'place' in to && to.place === 'home';
+    const beside = (id: PetId): { x: number; y: number; width: number; height: number } | null => {
+      const other = this.pets.get(id);
+      if (!other) return null;
+      // A pet on its way is where it is going, so two sent to each other end up side by side.
+      const at = other.where === 'toSpot' ? other.target : other.at;
+      return { x: at.x, y: at.y, width: other.manifest.width, height: other.manifest.height };
+    };
     going.forEach((pet, i) => {
-      pet.target = walkSpot(to, pet.manifest, i, going.length, { area: main, cursor: near, home: pet.home, random: Math.random });
+      pet.target = walkSpot(to, pet.manifest, i, going.length, { area: main, cursor: near, home: pet.home, random: Math.random, beside });
       pet.where = home ? 'back' : 'toSpot';
       pet.hold = home ? null : Infinity;
       pet.show = 0;

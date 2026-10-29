@@ -6,7 +6,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { resolveLang, strings, type Strings } from '../shared/i18n';
 import {
   SETTINGS_CH, type About, type AppStatus, type PanelAction, type PanelState, type TeammateHistoryOp,
@@ -67,11 +67,16 @@ import { HistoryStore } from './teammate/historyStore';
 import { MateWindows, overShownWindow } from './teammate/mateWindows';
 import { openAcp } from './teammate/acp/process';
 import { listHostModels, startAcpSession } from './teammate/acp/session';
-import { PetHost } from './teammate/petHost';
+import { PetHost, type PetNames } from './teammate/petHost';
+import { PetGroups } from './teammate/petGroups';
+import { PetLounge } from './teammate/petLounge';
+import { PetMinds } from './teammate/petMinds';
+import { PetSociety } from './teammate/petSociety';
 import { PetRoam } from './teammate/petRoam';
 import { PetWindows } from './teammate/petWindows';
 import { DEFAULT_PETS } from '../shared/teammate/pet';
-import { pickHostAgent, type HostModel } from '../shared/teammate/petHost';
+import { forgetNote } from '../shared/teammate/petMind';
+import { normalizeHostModels, pickHostAgent, type HostModel, type HostModelList } from '../shared/teammate/petHost';
 import { createAdapter } from './teammate/providers';
 import { SecretStore } from './teammate/secrets';
 import { StaleWatcher } from './teammate/staleWatcher';
@@ -160,8 +165,14 @@ interface Mate {
   agents: AgentRunner;
   /** Starts the user's agent now and then to do something with the pets, when they let it. */
   roam: PetRoam;
-  /** Keeps the user's Copilot CLI on to run the pets, when they let it. */
-  host: PetHost;
+  /** Keeps the user's Copilot CLI on to run the pets, one session each, when they let it. */
+  host: PetSociety;
+  /** What each pet has chosen to remember. */
+  minds: PetMinds;
+  /** The groups of pets the user made. */
+  groups: PetGroups;
+  /** The window where the pets' talk is read and joined. */
+  lounge: PetLounge;
   /** lolPing's end of the MCP bridge once it listens; null when it couldn't, and then agent asks ask for a restart. */
   mcp: Promise<BridgeServer | null>;
 }
@@ -418,6 +429,7 @@ function start(): void {
         stop: () => mate?.controller.cancel('user'),
         openHistory: () => void openHistory(),
         setHistoryPaused: (paused) => setHistoryPaused(paused),
+        openLounge: () => openLounge(),
       },
       // The tray has no card to show a result on, so the handlers toast it. Nothing to toast on once the overlays are gone.
       update: updater
@@ -766,9 +778,10 @@ function start(): void {
     if (quitting) return;
     const h = settings.teammate.history;
     tray.setTeammate(mate
-      ? { running: mate.controller.running, historyOn: h.on && mate.history.available(), paused: h.paused }
+      ? { running: mate.controller.running, historyOn: h.on && mate.history.available(), paused: h.paused, pets: mate.host.active }
       : null);
   }
+  const openLounge = (): void => mate?.lounge.open();
   function closeWords(): void {
     mate?.windows.hideWords(); // closes without an action, so the suspend is released here
     wordsSpots = null;
@@ -887,22 +900,44 @@ function start(): void {
       after: afterMs, command, args, cwd, env, version: app.getVersion(),
     })
   );
-  /** The models Copilot CLI offers, asked for now and then: it is a process start. */
+  /** The models Copilot CLI offers. Asking is a process start, so the last answer is kept in memory and in a file. */
   let hostModels: { at: number; command: string; models: HostModel[] } | null = null;
   const MODELS_CACHE_MS = 10 * 60_000;
-  const askHostModels = async (): Promise<HostModel[]> => {
+  const modelsFile = (): string => join(settingsDir(), 'teammate', 'host-models.json');
+  const savedHostModels = async (): Promise<HostModel[]> => {
+    try {
+      return normalizeHostModels(JSON.parse(await readFile(modelsFile(), 'utf8')));
+    } catch {
+      return [];
+    }
+  };
+  /** `live` asks Copilot CLI (unless it was asked a moment ago, which `force` ignores); otherwise the last answer is given as it is. */
+  const askHostModels = async (live: boolean, force: boolean): Promise<HostModelList> => {
     const t = settings.teammate;
     const profile = pickHostAgent(t.profiles, t.defaultProfile);
-    if (!profile) throw new Error('no Copilot profile');
-    if (hostModels && hostModels.command === profile.command && Date.now() - hostModels.at < MODELS_CACHE_MS) return hostModels.models;
-    const cwd = join(app.getPath('temp'), 'lolping-models');
-    await mkdir(cwd, { recursive: true });
-    const models = await listHostModels({
-      open: (c, a, d, e) => openAcp({ spawn, platform: PLATFORM, killTree: killProcessTree(PLATFORM) }, c, a, d, e),
-      after: afterMs, command: profile.command, cwd, env: await userEnv(), version: app.getVersion(),
-    });
-    if (models.length > 0) hostModels = { at: Date.now(), command: profile.command, models };
-    return models;
+    if (!live) {
+      if (hostModels) return { models: hostModels.models, source: 'live', error: null };
+      return { models: await savedHostModels(), source: 'cache', error: null };
+    }
+    try {
+      if (!profile) throw new Error('No Copilot CLI agent is set up in Teammate.');
+      if (!force && hostModels && hostModels.command === profile.command && Date.now() - hostModels.at < MODELS_CACHE_MS) {
+        return { models: hostModels.models, source: 'live', error: null };
+      }
+      const cwd = join(app.getPath('temp'), 'lolping-models');
+      await mkdir(cwd, { recursive: true });
+      const models = await listHostModels({
+        open: (c, a, d, e) => openAcp({ spawn, platform: PLATFORM, killTree: killProcessTree(PLATFORM) }, c, a, d, e),
+        after: afterMs, command: profile.command, cwd, env: await userEnv(), version: app.getVersion(),
+      });
+      if (models.length === 0) throw new Error('Copilot CLI listed no models.');
+      hostModels = { at: Date.now(), command: profile.command, models };
+      void mkdir(dirname(modelsFile()), { recursive: true }).then(() => writeFile(modelsFile(), JSON.stringify(models))).catch(() => undefined);
+      return { models, source: 'live', error: null };
+    } catch (e) {
+      const error = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+      return { models: hostModels?.models ?? await savedHostModels(), source: 'cache', error };
+    }
   };
   /** Screen captures live here only during an ask; anything left from a crash or a late write goes at start and stop. */
   const mateTempDir = (): string => join(app.getPath('temp'), 'lolping-teammate');
@@ -1033,36 +1068,83 @@ function start(): void {
       },
       random: Math.random,
     });
-    const host = new PetHost({
+    const words = () => strings(mateLang(), PLATFORM).teammate.ask;
+    const names = (): PetNames => ({ pet: words().petName, everyone: words().everyone });
+    const minds = new PetMinds(join(dir, 'pet-notes.json'));
+    const groups = new PetGroups(join(dir, 'pet-groups.json'));
+    const host = new PetSociety({
       settings: () => settings,
-      enabled: () => enabled && mate !== null,
-      busy: () => controller.running,
-      lang: mateLang,
-      now: () => new Date(),
+      now: Date.now,
       idleSeconds: () => powerMonitor.getSystemIdleTime(),
-      pet: pets,
-      start: acpSession,
-      bridge: agentBridge,
-      env: userEnv,
-      tempDir: () => tempDir,
-      files: {
-        makeDir: async (p) => {
-          await mkdir(p, { recursive: true });
-        },
-        writeFile: (p, text) => writeFile(p, text, 'utf8'),
-        removeDir: (p) => rm(p, { recursive: true, force: true }),
+      shown: () => pets.shown(),
+      minds,
+      groups,
+      say: (text) => {
+        pets.drive({ kind: 'say', pet: null, text, mood: null }, 'lolPing');
       },
       after: afterMs,
       random: Math.random,
+      make: (who, room, stagger, tell) => new PetHost({
+        who,
+        settings: () => settings,
+        enabled: () => enabled && mate !== null,
+        busy: () => controller.running,
+        lang: mateLang,
+        now: () => new Date(),
+        idleSeconds: () => powerMonitor.getSystemIdleTime(),
+        pet: pets,
+        room,
+        minds,
+        names,
+        tell,
+        stagger,
+        start: acpSession,
+        bridge: agentBridge,
+        env: userEnv,
+        tempDir: () => tempDir,
+        files: {
+          makeDir: async (p) => {
+            await mkdir(p, { recursive: true });
+          },
+          writeFile: (p, text) => writeFile(p, text, 'utf8'),
+          removeDir: (p) => rm(p, { recursive: true, force: true }),
+        },
+        after: afterMs,
+        random: Math.random,
+      }),
     });
-    const words = () => strings(mateLang(), PLATFORM).teammate.ask;
     pets.setChat({
       on: () => host.active,
       hint: () => words().chatHint,
       off: () => words().chatOff,
       send: (pet, text) => {
-        host.chat(pet, text);
+        host.userSays(pet, text);
       },
+    });
+    const lounge = new PetLounge({
+      transcript: () => host.transcript(),
+      groups: () => host.groups(),
+      rosters: () => host.rosters(),
+      onEvent: (fn) => host.onEvent(fn),
+      send: (room, to, text) => host.userSays(to, text, room),
+      saveGroup: (input) => host.saveGroup(input),
+      deleteGroup: (id) => host.deleteGroup(id),
+      words: () => {
+        const w = words();
+        return {
+          text: {
+            title: w.loungeTitle, hint: w.loungeHint, everyone: w.everyone, send: w.loungeSend, empty: w.loungeEmpty,
+            you: w.loungeYou, noted: w.loungeNoted, main: w.loungeMain, newGroup: w.loungeNewGroup,
+            editGroup: w.loungeEditGroup, groupName: w.loungeGroupName, members: w.loungeMembers,
+            membersHint: w.loungeMembersHint, save: w.loungeSave, cancel: w.loungeCancel, delete: w.loungeDelete,
+            sure: w.loungeSure, groupEmpty: w.loungeGroupEmpty,
+          },
+          names: w.petName,
+        };
+      },
+    });
+    host.onEvent((e) => {
+      if (e.kind === 'roster') pushMateTray();
     });
     // The pipe may be taken, possibly by another user's process: then nothing of an agent's goes through it.
     const mcp = (async (): Promise<BridgeServer> => {
@@ -1097,7 +1179,7 @@ function start(): void {
     controller.on('state', pushMateTray);
     windows.on('action', onMateAction);
     windows.on('dragged', (view: MateView) => controller.onDragged(view));
-    return { secrets, history, usage, context, windows, actions, controller, stale, agents, roam, host, mcp };
+    return { secrets, history, usage, context, windows, actions, controller, stale, agents, roam, host, minds, groups, lounge, mcp };
   };
   /** Takes the teammate down; settles once its context helper has exited and its usage is on disk. */
   const stopMate = (): Promise<unknown> => {
@@ -1108,6 +1190,7 @@ function start(): void {
     mate = null;
     m.roam.stop();
     m.host.stop();
+    m.lounge.destroy();
     pets.setChat(null);
     m.controller.cancel('user');
     m.agents.killAll(); // also on quitting: no agent, nor anything it started, outlives lolPing
@@ -1122,7 +1205,7 @@ function start(): void {
     const captures = m.context.stop().finally(() => rm(mateTempDir(), { recursive: true, force: true }));
     // A new teammate listens on the same pipe, so it starts only once this one has let go of it.
     const bridged = m.mcp.then((server) => server?.stop());
-    return Promise.allSettled([captures, m.usage.flush(), m.history.list(), bridged]);
+    return Promise.allSettled([captures, m.usage.flush(), m.minds.flush(), m.groups.flush(), m.history.list(), bridged]);
   };
   /** A teammate going down: a new one starts only after it, so two stores never write the same files. */
   let mateStopping: Promise<unknown> | null = null;
@@ -1271,6 +1354,14 @@ function start(): void {
         if (IS_MAC) void shell.openExternal(SCREEN_RECORDING_PANE);
       },
       hostModels: askHostModels,
+      petNotes: (id) => [...(mate?.minds.notes(id) ?? [])],
+      forgetPetNote: (id, number) => {
+        const m = mate;
+        if (!m) return [];
+        m.minds.set(id, number === null ? [] : forgetNote(m.minds.notes(id), number).notes, 'user');
+        return [...m.minds.notes(id)];
+      },
+      openPetLounge: () => openLounge(),
       checkAgent: async (p) => {
         const env = await userEnv();
         return checkAgent(p, {

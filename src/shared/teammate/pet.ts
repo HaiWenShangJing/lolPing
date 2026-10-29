@@ -1,19 +1,28 @@
 /** The desktop pet: which characters show, how a character's animation pack reads, and how one walks to a ping. */
 
 import { L2D_ANIMS } from './live2d';
+import { PERSONA_MAX, cleanLine, modelId } from './petText';
 
 export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori'] as const;
 export type PetId = (typeof PET_IDS)[number];
+
+export const isPetId = (raw: unknown): raw is PetId => (PET_IDS as readonly unknown[]).includes(raw);
 
 /** Which way each pack's art looks when unflipped, so running can face the way it goes. */
 export const PET_FACES: Record<PetId, 'left' | 'right'> = {
   whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right', hiyori: 'right',
 };
 
-/** One character's setting: whether it shows, and the animation it plays while it rests on the desktop. */
+/**
+ * One character's setting: whether it shows, and the animation it plays while it rests on the desktop. When Copilot CLI
+ * hosts the pets, `model` is the model that runs this pet (null: the shared one) and `persona` is the character the user
+ * wrote for it (empty: its own).
+ */
 export interface PetSetting {
   on: boolean;
   rest: string;
+  model: string | null;
+  persona: string;
 }
 export type PetsSetting = Record<PetId, PetSetting>;
 
@@ -38,11 +47,11 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
 };
 
 export const DEFAULT_PETS: PetsSetting = {
-  whale: { on: false, rest: PET_RESTS.whale[0] },
-  naiwa: { on: false, rest: PET_RESTS.naiwa[0] },
-  shenshen: { on: false, rest: PET_RESTS.shenshen[0] },
-  airi: { on: false, rest: PET_RESTS.airi[0] },
-  hiyori: { on: false, rest: PET_RESTS.hiyori[0] },
+  whale: { on: false, rest: PET_RESTS.whale[0], model: null, persona: '' },
+  naiwa: { on: false, rest: PET_RESTS.naiwa[0], model: null, persona: '' },
+  shenshen: { on: false, rest: PET_RESTS.shenshen[0], model: null, persona: '' },
+  airi: { on: false, rest: PET_RESTS.airi[0], model: null, persona: '' },
+  hiyori: { on: false, rest: PET_RESTS.hiyori[0], model: null, persona: '' },
 };
 
 /** Reads the saved setting; anything unknown falls back to off and the character's default animation. */
@@ -54,6 +63,8 @@ export function normalizePets(raw: unknown): PetsSetting {
     return {
       on: o.on === true,
       rest: typeof o.rest === 'string' && PET_RESTS[id].includes(o.rest) ? o.rest : DEFAULT_PETS[id].rest,
+      model: modelId(o.model),
+      persona: cleanLine(o.persona, PERSONA_MAX),
     };
   };
   const pets = { ...DEFAULT_PETS };

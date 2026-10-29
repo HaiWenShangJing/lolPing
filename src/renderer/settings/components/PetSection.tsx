@@ -1,16 +1,142 @@
-import { Dropdown, Option } from '@fluentui/react-components';
-import { Emoji24Regular } from '@fluentui/react-icons';
+import { Button, Combobox, Dropdown, Option, Textarea } from '@fluentui/react-components';
+import { ArrowClockwise20Regular, Brain24Regular, Chat24Regular, Emoji24Regular } from '@fluentui/react-icons';
 import { Fragment, useEffect, useState } from 'react';
 import { PET_IDS, PET_RESTS, type PetId, type PetSetting } from '../../../shared/teammate/pet';
-import { HOST_ACTIVITIES, ROAM_KINDS, hostModel, type HostModel } from '../../../shared/teammate/petHost';
+import {
+  HOST_ACTIVITIES, ROAM_KINDS, hostModel, type HostModel, type HostModelList,
+} from '../../../shared/teammate/petHost';
+import { DEFAULT_PERSONAS, type PetNote } from '../../../shared/teammate/petMind';
 import { ROAM_CHOICES } from '../../../shared/teammate/petRoam';
+import { PERSONA_MAX } from '../../../shared/teammate/petText';
 import { api } from '../api';
 import { useText } from '../text';
 import type { Update } from '../useAppState';
-import { SettingRow, SwitchRow } from './rows';
+import { ExpanderRow, SettingRow, SwitchRow } from './rows';
 import type { Settings } from '../../../shared/settings';
 
 const modelLabel = (m: HostModel): string => (m.cost ? `${m.name} · ${m.cost}` : m.name);
+/** The list entry that stands for "no model of its own"; it can't be a model id. */
+const NONE = '*';
+
+/**
+ * A model chosen from what Copilot CLI offers or typed as any id it accepts. `null` is no choice: the Copilot default,
+ * or for a pet the model of all the others.
+ */
+function ModelPicker({ value, models, none, onCommit }: {
+  value: string | null; models: readonly HostModel[]; none: string; onCommit(v: string | null): void;
+}) {
+  const m = useText().teammate.settings;
+  const labelOf = (v: string | null): string => {
+    const hit = v === null ? undefined : models.find((x) => x.id === v);
+    return v === null ? none : hit ? modelLabel(hit) : v;
+  };
+  const [text, setText] = useState(labelOf(value));
+  const [typing, setTyping] = useState(false);
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    if (!typing) setText(labelOf(value));
+  }, [value, models, none, typing]);
+
+  // undefined: the text is neither an entry of the list nor a model id.
+  const resolve = (raw: string): string | null | undefined => {
+    const q = raw.trim();
+    if (q === '' || q === none) return null;
+    const hit = models.find((x) => x.id === q || modelLabel(x) === q || x.name.toLowerCase() === q.toLowerCase());
+    return hit ? hit.id : hostModel(q) ?? undefined;
+  };
+  const commit = (raw: string) => {
+    setTyping(false);
+    const next = resolve(raw);
+    setBad(next === undefined);
+    if (next === undefined) {
+      setText(labelOf(value));
+      return;
+    }
+    setText(labelOf(next));
+    if (next !== value) onCommit(next);
+  };
+
+  return (
+    <div className="mateStack">
+      <Combobox freeform value={text} placeholder={m.petModelPlaceholder} style={{ width: 290 }}
+        listbox={{ style: { maxHeight: 260 } }} selectedOptions={[value ?? NONE]}
+        positioning={{ position: 'below', align: 'end', autoSize: 'height', fallbackPositions: ['above-end'] }}
+        onChange={(e) => {
+          setTyping(true);
+          setText(e.target.value);
+        }}
+        onBlur={() => typing && commit(text)}
+        onKeyDown={(e) => e.key === 'Enter' && typing && commit(text)}
+        onOptionSelect={(e, d) => {
+          // Enter after typing also selects the option the list has highlighted: the typed text is what was meant.
+          if (d.optionValue === undefined || (typing && e.type === 'keydown')) return;
+          commit(d.optionValue === NONE ? '' : d.optionValue);
+        }}>
+        <Option value={NONE} text={none}>{none}</Option>
+        {models.map((x) => <Option key={x.id} value={x.id} text={modelLabel(x)}>{modelLabel(x)}</Option>)}
+      </Combobox>
+      {bad ? <span className="weImportError">{m.petModelInvalid}</span> : null}
+    </div>
+  );
+}
+
+/** What a pet is like, in the user's words; the default is shown where it's left empty. */
+function PersonaBox({ id, value, onSave }: { id: PetId; value: string; onSave(v: string): void }) {
+  const m = useText().teammate.settings;
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <div className="expPane">
+      <span className="paneTitle">{m.petPersona}</span>
+      <span className="desc">{m.petPersonaDesc}</span>
+      <Textarea className="mateInstructions" value={draft} maxLength={PERSONA_MAX} resize="vertical"
+        placeholder={DEFAULT_PERSONAS[id]} aria-label={m.petPersona} onChange={(_, d) => setDraft(d.value)}
+        onBlur={() => draft.trim() !== value && onSave(draft.trim())} />
+    </div>
+  );
+}
+
+/** What a pet chose to remember; the user can have it forget one note or all of them. */
+function PetMemory({ id, names }: { id: PetId; names: Record<PetId, string> }) {
+  const m = useText().teammate.settings;
+  const [notes, setNotes] = useState<PetNote[]>([]);
+  useEffect(() => {
+    let current = true;
+    const read = () => void api.getPetNotes(id).then((n) => current && setNotes(n)).catch(() => undefined);
+    read();
+    // The pet adds notes while the window is open: read them again when it regains focus.
+    window.addEventListener('focus', read);
+    return () => {
+      current = false;
+      window.removeEventListener('focus', read);
+    };
+  }, [id]);
+  const forget = (number: number | null) => void api.forgetPetNote(id, number).then(setNotes).catch(() => undefined);
+  const about = (n: PetNote): string | null =>
+    n.about === null ? null : n.about === 'user' ? m.petMemoryAboutYou : m.petMemoryAbout(names[n.about]);
+  return (
+    <div className="expPane">
+      <span className="paneTitle">{m.petMemory}</span>
+      <span className="desc">{m.petMemoryDesc}</span>
+      {notes.length === 0 ? <span className="desc petNotesNone">{m.petMemoryNone}</span> : (
+        <div className="petNotes">
+          {notes.map((n, i) => (
+            <div className="petNote" key={`${n.at}-${i}`}>
+              <span className="txt">{n.text}</span>
+              {about(n) ? <span className="tag">{about(n)}</span> : null}
+              <Button appearance="subtle" size="small" onClick={() => forget(i + 1)}>{m.petMemoryForget}</Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {notes.length > 1 ? (
+        <div className="mateRow mateNote">
+          <Button appearance="subtle" onClick={() => forget(null)}>{m.petMemoryForgetAll}</Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /** The desktop pets: each character on or off, and the animation it rests in. */
 export function PetSection({ settings: s, update }: { settings: Settings; update: Update }) {
@@ -21,19 +147,27 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
     whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri, hiyori: m.petHiyori,
   };
   const hosting = mate.petRoam && mate.petRoamKind === 'host';
-  const [models, setModels] = useState<HostModel[]>([]);
+
+  // What was said last time appears at once and the live answer replaces it: asking Copilot CLI takes a process start.
+  const [list, setList] = useState<HostModelList>({ models: [], source: 'cache', error: null });
+  const [asking, setAsking] = useState(false);
+  const ask = (force: boolean, isCurrent: () => boolean = () => true) => {
+    setAsking(true);
+    void api.listHostModels(true, force).then((l) => isCurrent() && setList(l)).catch(() => undefined)
+      .finally(() => isCurrent() && setAsking(false));
+  };
   useEffect(() => {
-    if (!hosting) return;
     let current = true;
-    api.listHostModels().then((list) => {
-      if (current) setModels(list);
-    }).catch(() => undefined);
+    void api.listHostModels(false).then((l) => current && setList(l)).catch(() => undefined);
+    ask(false, () => current);
     return () => {
       current = false;
     };
-  }, [hosting]);
-  const chosen = models.find((x) => x.id === mate.petHostModel);
-  const chosenLabel = mate.petHostModel === null ? m.petHostModelDefault : chosen ? modelLabel(chosen) : mate.petHostModel;
+  }, []);
+  const status = asking ? m.petModelsLoading
+    : list.error !== null ? m.petModelsError(list.error)
+    : list.source === 'live' ? m.petModelsLive(list.models.length) : null;
+  const setModel = (petHostModel: string | null) => void update({ teammate: { ...mate, petHostModel } });
 
   return (
     <>
@@ -73,17 +207,11 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
         </SettingRow>
       ) : (
         <>
-          <SettingRow icon={null} title={m.petHostModel} description={m.petHostModelDesc} dim={!mate.petRoam}>
-            <Dropdown style={{ minWidth: 230 }} value={chosenLabel} selectedOptions={[mate.petHostModel ?? '']}
-              disabled={!mate.petRoam} listbox={{ style: { maxHeight: 260 } }}
-              positioning={{ position: 'above', align: 'end', autoSize: 'height', fallbackPositions: ['below-end'] }}
-              onOptionSelect={(_, d) => {
-                const petHostModel = d.optionValue === '' ? null : hostModel(d.optionValue);
-                if (d.optionValue === '' || petHostModel !== null) void update({ teammate: { ...mate, petHostModel } });
-              }}>
-              <Option value="" text={m.petHostModelDefault}>{m.petHostModelDefault}</Option>
-              {models.map((x) => <Option key={x.id} value={x.id} text={modelLabel(x)}>{modelLabel(x)}</Option>)}
-            </Dropdown>
+          <SettingRow icon={null} title={m.petHostModel} dim={!mate.petRoam}
+            description={<>{m.petHostModelDesc}{status ? <span className="desc">{status}</span> : null}</>}>
+            <ModelPicker value={mate.petHostModel} models={list.models} none={m.petHostModelDefault} onCommit={setModel} />
+            <Button appearance="subtle" icon={<ArrowClockwise20Regular />} disabled={asking} aria-label={m.petModelRefresh}
+              title={m.petModelRefresh} onClick={() => ask(true)} />
           </SettingRow>
           <SettingRow icon={null} title={m.petHostActivity} description={m.petHostActivityDesc} dim={!mate.petRoam}>
             <Dropdown style={{ minWidth: 200 }} value={m.petHostActivityOption[mate.petHostActivity]}
@@ -98,12 +226,19 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
               ))}
             </Dropdown>
           </SettingRow>
+          <SwitchRow icon={<Chat24Regular />} title={m.petSocial} description={m.petSocialDesc} checked={mate.petSocial}
+            dim={!mate.petRoam} disabled={!mate.petRoam}
+            onChange={(petSocial) => void update({ teammate: { ...mate, petSocial } })} />
+          <SettingRow icon={<Chat24Regular />} title={m.petLounge} description={m.petLoungeDesc} dim={!mate.petRoam}>
+            <Button disabled={!mate.petRoam} onClick={() => void api.openPetLounge()}>{m.petLoungeOpen}</Button>
+          </SettingRow>
         </>
       )}
       {PET_IDS.map((id) => {
         const pet = mate.pets[id];
         const setPet = (p: Partial<PetSetting>) =>
           void update({ teammate: { ...mate, pets: { ...mate.pets, [id]: { ...pet, ...p } } } });
+        const own = pet.model === null ? null : list.models.find((x) => x.id === pet.model);
         return (
           <Fragment key={id}>
             <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={id === 'hiyori' ? m.petHiyoriDesc : undefined}
@@ -119,6 +254,17 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
                 {PET_RESTS[id].map((r) => <Option key={r} value={r} text={m.petAnims[r] ?? r}>{m.petAnims[r] ?? r}</Option>)}
               </Dropdown>
             </SettingRow>
+            {pet.on && hosting ? (
+              <ExpanderRow icon={<Brain24Regular />} title={m.petMind(names[id])}
+                description={pet.model === null ? m.petModelSame : own ? modelLabel(own) : pet.model}>
+                <SettingRow icon={null} title={m.petHostModel} description={m.petModelOwnDesc}>
+                  <ModelPicker value={pet.model} models={list.models} none={m.petModelSame}
+                    onCommit={(model) => setPet({ model })} />
+                </SettingRow>
+                <PersonaBox id={id} value={pet.persona} onSave={(persona) => setPet({ persona })} />
+                <PetMemory id={id} names={names} />
+              </ExpanderRow>
+            ) : null}
           </Fragment>
         );
       })}

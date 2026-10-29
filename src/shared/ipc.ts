@@ -9,7 +9,9 @@ import type { HistoryLine } from './roomHistory';
 import { PEER_RE } from './roomProtocol';
 import type { OverlaySettings, RoomTextStyle, Settings } from './settings';
 import type { Rect } from './teammate/coords';
-import type { HostModel } from './teammate/petHost';
+import type { PetId } from './teammate/pet';
+import type { HostModelList } from './teammate/petHost';
+import type { PetNote } from './teammate/petMind';
 import type { UpdateState } from './update';
 import type { VoteView } from './voteTally';
 
@@ -309,8 +311,18 @@ export interface SettingsApi {
   checkTeammateKey(profileId: string): Promise<CheckKeyResult>;
   /** Runs an agent profile's command with --version. The main process looks the profile up; no command comes from here. */
   checkTeammateAgent(profileId: string): Promise<CheckAgentResult>;
-  /** The models Copilot CLI offers, as it names them with their price; a short built-in list when it can't be asked. */
-  listHostModels(): Promise<HostModel[]>;
+  /**
+   * The models Copilot CLI offers, as it names them with their price. `live` asks it now (slow: a process start; an
+   * answer from the last ten minutes is reused unless `force`); without it, what it said last time. When it can't be
+   * asked, the last answer or a short built-in list, with `error` saying why.
+   */
+  listHostModels(live: boolean, force?: boolean): Promise<HostModelList>;
+  /** What the pet remembers, oldest first. */
+  getPetNotes(id: PetId): Promise<PetNote[]>;
+  /** Makes the pet forget note `number` (counted from 1), or all of them with null; what it remembers after. */
+  forgetPetNote(id: PetId, number: number | null): Promise<PetNote[]>;
+  /** Opens the window where the pets' talk is read and joined. */
+  openPetLounge(): Promise<void>;
   /** Shows the system folder picker; the chosen path, or null when it was cancelled. */
   pickTeammateFolder(): Promise<string | null>;
   /**

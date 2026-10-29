@@ -162,6 +162,28 @@ interface MateAskText {
   chatOff: string;
   /** The hint in the box a double tap on a pet opens. */
   chatHint: string;
+  /** What each pet is called in a bubble's header and in the lounge, and "to everyone". */
+  petName: { whale: string; naiwa: string; shenshen: string; airi: string; hiyori: string };
+  everyone: string;
+  /** The pet lounge window: its title, the hint of its box, the Send button, what it says while no pet is out, what the user's lines are called, and what a note says. */
+  loungeTitle: string;
+  loungeHint: string;
+  loungeSend: string;
+  loungeEmpty: string;
+  loungeYou: string;
+  loungeNoted: string;
+  /** Groups in the lounge: the first tab, the buttons and labels of the group form, and what a group says while none of its pets is out. */
+  loungeMain: string;
+  loungeNewGroup: string;
+  loungeEditGroup: string;
+  loungeGroupName: string;
+  loungeMembers: string;
+  loungeMembersHint: string;
+  loungeSave: string;
+  loungeCancel: string;
+  loungeDelete: string;
+  loungeSure: string;
+  loungeGroupEmpty: string;
   /** A spot refused while the ask key is held: a fifth one, or one on another display than the first. */
   spotsFull: string;
   spotsDisplay: string;
@@ -221,6 +243,25 @@ const enMateAsk: MateAskText = {
   hostGaveUp: 'Hosting keeps failing, so I’m stopping. Turn it off and on in Settings → Pets to try again.',
   chatOff: 'To chat with me, turn on “AI roams the pets” and choose Copilot CLI hosting in Settings → Pets.',
   chatHint: 'Say something… (Enter to send)',
+  petName: { whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori' },
+  everyone: 'everyone',
+  loungeTitle: 'Pet lounge',
+  loungeHint: 'Say something to the pets… (Enter to send)',
+  loungeSend: 'Send',
+  loungeEmpty: 'No pet that is hosted by Copilot CLI is out right now. Turn one on in Settings → Pets.',
+  loungeYou: 'You',
+  loungeNoted: 'made a note:',
+  loungeMain: 'Everyone',
+  loungeNewGroup: 'New group',
+  loungeEditGroup: 'Edit group',
+  loungeGroupName: 'Group name',
+  loungeMembers: 'Members',
+  loungeMembersHint: 'Pick at least two pets. Only they hear what is said in the group.',
+  loungeSave: 'Save',
+  loungeCancel: 'Cancel',
+  loungeDelete: 'Delete group',
+  loungeSure: 'Delete it and its chat?',
+  loungeGroupEmpty: 'None of this group’s pets is out right now. Turn them on in Settings → Pets.',
   spotsFull: 'Up to 4 spots per ask',
   spotsDisplay: 'Spots in one ask stay on one screen',
   spots: (n) => `${n} spots`,
@@ -422,8 +463,32 @@ const enMateSettings = {
   petRoamKindDesc: 'A visit starts the agent fresh now and then: cheap, but it forgets everything in between. Keeping Copilot CLI on holds one session open that remembers what the pets did, decides for itself when to act next and answers when you double-click a pet and type to it. It needs a Copilot CLI agent in Teammate.',
   petRoamKindOption: { visit: 'Visit now and then', host: 'Keep Copilot CLI on' },
   petHostModel: 'Model',
-  petHostModelDesc: 'The model that runs the pets. Every wake-up is one request at the model\'s price multiplier (shown by its name), so a cheap one such as Claude Haiku keeps the cost down. Changing it starts a new session.',
+  petHostModelDesc: 'The model that runs the pets. Pick one from the list or type any model id Copilot CLI accepts. Every wake-up is one request at the model\'s price multiplier (shown by its name), so a cheap one such as Claude Haiku keeps the cost down. Changing it switches the running sessions at once.',
   petHostModelDefault: 'Copilot default',
+  petModelSame: 'Same as above',
+  petModelPlaceholder: 'Pick or type a model id',
+  petModelInvalid: 'That is not a model id: it takes letters, digits and . _ : - only.',
+  petModelRefresh: 'Refresh the list',
+  petModelsLoading: 'Asking Copilot CLI for its models…',
+  petModelsLive: (n: number) => `${n} models from Copilot CLI.`,
+  petModelsError: (why: string) => `Couldn’t ask Copilot CLI (${why}). Showing the last list it gave, or a short built-in one; you can still type any model id.`,
+  petMind: (name: string) => `${name}’s mind`,
+  petMindDesc: 'Each pet has its own Copilot CLI session, with its own model, personality and memory.',
+  petModelOwnDesc: 'Leave it on “Same as above” to use the model chosen above, or give this pet another one.',
+  petPersona: 'Personality',
+  petPersonaDesc: 'Who this pet is, in a sentence or two. Leave it empty for the default. A change starts a new session at the pet’s next wake-up.',
+  petMemory: 'Memory',
+  petMemoryDesc: 'What this pet chose to remember. It keeps these by itself, and you can make it forget any of them. They are stored on this computer.',
+  petMemoryNone: 'Nothing yet.',
+  petMemoryAboutYou: 'about you',
+  petMemoryAbout: (name: string) => `about ${name}`,
+  petMemoryForget: 'Forget',
+  petMemoryForgetAll: 'Forget everything',
+  petSocial: 'Let the pets talk to each other',
+  petSocialDesc: 'Pets that are out hear one another: they greet, answer, chat among themselves and walk over to each other. They stay quiet while you are away. Turned off, they only answer you.',
+  petLounge: 'Pet lounge',
+  petLoungeDesc: 'A window where you read what the pets say to each other, speak to one of them or to all, and make groups: pick which pets join and talk things over there.',
+  petLoungeOpen: 'Open',
   petHostActivity: 'Activity',
   petHostActivityDesc: 'How often it wakes up. It sleeps while you have been away from the keyboard for 10 minutes or more.',
   petHostActivityOption: { calm: 'Calm (about every 6 min)', normal: 'Normal (about every 2½ min)', lively: 'Lively (about every minute)' },
@@ -824,6 +889,7 @@ const en = {
   trayRoomLeave: 'Leave room',
   trayMateStop: 'Stop teammate',
   trayMateHistory: 'Teammate history…',
+  trayMateLounge: 'Pet lounge…',
   trayMatePauseHistory: 'Pause history',
   trayMateResumeHistory: 'Resume history',
   toastRoomJoined: (code: string) => `Joined room ${code}`,
@@ -1326,6 +1392,25 @@ const zh: Strings = {
       hostGaveUp: '托管一直失败，我先停下了。在“设置 → 桌宠”里关掉再打开就能重试。',
       chatOff: '想和我聊天，请在“设置 → 桌宠”里打开“让 AI 带桌宠溜达”，并选择 Copilot CLI 托管。',
       chatHint: '说点什么…（回车发送）',
+      petName: { whale: '鲸鱼娘', naiwa: '奶蛙', shenshen: '深深', airi: 'Airi', hiyori: '日和' },
+      everyone: '大家',
+      loungeTitle: '桌宠聊天室',
+      loungeHint: '对桌宠们说点什么…（回车发送）',
+      loungeSend: '发送',
+      loungeEmpty: '现在没有由 Copilot CLI 托管的桌宠在场。请在“设置 → 桌宠”里打开一个。',
+      loungeYou: '你',
+      loungeNoted: '记了一条笔记：',
+      loungeMain: '大家',
+      loungeNewGroup: '新建群',
+      loungeEditGroup: '编辑群',
+      loungeGroupName: '群名称',
+      loungeMembers: '成员',
+      loungeMembersHint: '至少选两只桌宠。群里说的话只有它们听得到。',
+      loungeSave: '保存',
+      loungeCancel: '取消',
+      loungeDelete: '删除群',
+      loungeSure: '确认删除群和聊天记录？',
+      loungeGroupEmpty: '这个群里的桌宠现在都不在场。请在“设置 → 桌宠”里打开它们。',
       spotsFull: '一次最多 4 处',
       spotsDisplay: '一次提问的几处要在同一块屏幕上',
       spots: (n) => `${n} 处`,
@@ -1522,8 +1607,32 @@ const zh: Strings = {
       petRoamKindDesc: '“隔一会儿来一次”每次重新启动代理：省钱，但中间什么都不记得。“让 Copilot CLI 一直托管”则保持一个会话常开：它记得桌宠做过什么，自己决定下次什么时候行动，双击桌宠打字时还会回话。需要在“队友”里有一个 Copilot CLI 代理。',
       petRoamKindOption: { visit: '隔一会儿来一次', host: '让 Copilot CLI 一直托管' },
       petHostModel: '模型',
-      petHostModelDesc: '驱动桌宠的模型。每次唤醒是一次请求，按该模型的价格倍率计费（名字旁边有标注），所以用 Claude Haiku 这类便宜的模型能省不少。更换后会新开一个会话。',
+      petHostModelDesc: '驱动桌宠的模型。可以从列表里选，也可以直接输入 Copilot CLI 接受的任意模型 ID。每次唤醒是一次请求，按该模型的价格倍率计费（名字旁边有标注），所以用 Claude Haiku 这类便宜的模型能省不少。更换后正在运行的会话会立刻切换。',
       petHostModelDefault: 'Copilot 默认',
+      petModelSame: '同上',
+      petModelPlaceholder: '选择或输入模型 ID',
+      petModelInvalid: '这不是模型 ID：只能包含字母、数字和 . _ : -。',
+      petModelRefresh: '刷新列表',
+      petModelsLoading: '正在向 Copilot CLI 询问可用模型…',
+      petModelsLive: (n) => `Copilot CLI 提供了 ${n} 个模型。`,
+      petModelsError: (why) => `没能向 Copilot CLI 询问（${why}）。显示的是它上次给的列表，或一个简短的内置列表；仍然可以直接输入任意模型 ID。`,
+      petMind: (name) => `${name}的大脑`,
+      petMindDesc: '每个桌宠有自己的 Copilot CLI 会话，有各自的模型、性格和记忆。',
+      petModelOwnDesc: '选“同上”就用上面选的模型，也可以单独给这个桌宠换一个。',
+      petPersona: '性格',
+      petPersonaDesc: '这个桌宠是什么样的，一两句话即可。留空使用默认。修改后，在它下次醒来时会新开一个会话。',
+      petMemory: '记忆',
+      petMemoryDesc: '这个桌宠自己决定记住的内容。它自己记，你可以让它忘掉其中任何一条。都保存在这台电脑上。',
+      petMemoryNone: '还没有。',
+      petMemoryAboutYou: '关于你',
+      petMemoryAbout: (name) => `关于${name}`,
+      petMemoryForget: '忘掉',
+      petMemoryForgetAll: '全部忘掉',
+      petSocial: '让桌宠们互相聊天',
+      petSocialDesc: '在场的桌宠能听到彼此：打招呼、回话、自己聊起来，还会走到对方身边。你离开时它们会安静。关掉后它们只回应你。',
+      petLounge: '桌宠聊天室',
+      petLoungeDesc: '一个窗口，可以看桌宠们互相说了什么，对其中一个或所有桌宠说话，还可以拉群：选哪些桌宠参加，在群里一起讨论问题。',
+      petLoungeOpen: '打开',
       petHostActivity: '活跃度',
       petHostActivityDesc: '多久醒一次。你离开键盘 10 分钟以上时它会休眠。',
       petHostActivityOption: { calm: '安静（约每 6 分钟）', normal: '一般（约每 2.5 分钟）', lively: '活泼（约每 1 分钟）' },
@@ -1634,6 +1743,7 @@ const zh: Strings = {
   trayRoomLeave: '离开房间',
   trayMateStop: '停止队友',
   trayMateHistory: '队友历史…',
+  trayMateLounge: '桌宠聊天室…',
   trayMatePauseHistory: '暂停历史',
   trayMateResumeHistory: '恢复历史',
   toastRoomJoined: (code) => `已加入房间 ${code}`,

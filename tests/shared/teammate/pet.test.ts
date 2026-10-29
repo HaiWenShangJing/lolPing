@@ -12,11 +12,15 @@ const pack = (over: Record<string, unknown> = {}) => ({
 
 describe('petIds', () => {
   it('lists the characters that are on', () => {
-    const on = (...ids: string[]) => ({
-      whale: { on: ids.includes('whale'), rest: 'idle' }, naiwa: { on: ids.includes('naiwa'), rest: 'sit' },
-      shenshen: { on: ids.includes('shenshen'), rest: 'idle' }, airi: { on: ids.includes('airi'), rest: 'idle' },
-      hiyori: { on: ids.includes('hiyori'), rest: 'idle' },
-    });
+    const one = (id: string, rest: string) => ({ on: false, rest, model: null, persona: '' });
+    const on = (...ids: string[]) => {
+      const pets = {
+        whale: one('whale', 'idle'), naiwa: one('naiwa', 'sit'), shenshen: one('shenshen', 'idle'),
+        airi: one('airi', 'idle'), hiyori: one('hiyori', 'idle'),
+      };
+      for (const id of ids) pets[id as keyof typeof pets].on = true;
+      return pets;
+    };
     expect(petIds(on())).toEqual([]);
     expect(petIds(on('whale'))).toEqual(['whale']);
     expect(petIds(on('naiwa'))).toEqual(['naiwa']);
@@ -27,10 +31,23 @@ describe('petIds', () => {
 
 describe('normalizePets', () => {
   it('defaults to all off, resting in the first animation', () => {
+    const off = (rest: string) => ({ on: false, rest, model: null, persona: '' });
     expect(normalizePets(undefined)).toEqual({
-      whale: { on: false, rest: 'idle' }, naiwa: { on: false, rest: 'sit' },
-      shenshen: { on: false, rest: 'idle' }, airi: { on: false, rest: 'idle' }, hiyori: { on: false, rest: 'idle' },
+      whale: off('idle'), naiwa: off('sit'), shenshen: off('idle'), airi: off('idle'), hiyori: off('idle'),
     });
+  });
+
+  it('keeps a pet\'s own model and character, and drops what does not fit', () => {
+    const p = normalizePets({
+      whale: { on: true, model: 'claude-haiku-4.5', persona: '  a   grumpy\nwhale ' },
+      naiwa: { model: 'not a model!', persona: 7 },
+      airi: { persona: 'x'.repeat(500) },
+    });
+    expect(p.whale.model).toBe('claude-haiku-4.5');
+    expect(p.whale.persona).toBe('a grumpy whale');
+    expect(p.naiwa.model).toBeNull();
+    expect(p.naiwa.persona).toBe('');
+    expect(p.airi.persona).toHaveLength(300);
   });
 
   it('keeps a known animation and drops an unknown one', () => {
@@ -38,11 +55,11 @@ describe('normalizePets', () => {
       whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' },
       shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' }, hiyori: { on: true, rest: 'hum' },
     });
-    expect(p.whale).toEqual({ on: true, rest: 'dance' });
-    expect(p.naiwa).toEqual({ on: true, rest: 'sit' });
-    expect(p.shenshen).toEqual({ on: true, rest: 'dance' });
-    expect(p.airi).toEqual({ on: true, rest: 'idle' });
-    expect(p.hiyori).toEqual({ on: true, rest: 'hum' });
+    expect(p.whale).toMatchObject({ on: true, rest: 'dance' });
+    expect(p.naiwa).toMatchObject({ on: true, rest: 'sit' });
+    expect(p.shenshen).toMatchObject({ on: true, rest: 'dance' });
+    expect(p.airi).toMatchObject({ on: true, rest: 'idle' });
+    expect(p.hiyori).toMatchObject({ on: true, rest: 'hum' });
   });
 
   it('only turns a character on for true', () => {

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { PetStatus } from '../../../src/shared/teammate/petControl';
 import {
   CHAT_SIZE, DOUBLE_TAP_MS, FALLBACK_HOST_MODELS, HOST_CALLS_MAX, HOST_REST, HOST_SERVER, HOST_TOOLS, TAP_MAX_MOVE, TAP_MAX_MS,
-  chatAt, clampRest, hostActivity, hostArgs, hostChat, hostIntro, hostMcpConfig, hostModel, hostToolDefs, hostWake, isHostTool,
-  isTap, parseHostModels, parseRest, pickHostAgent, restDelayMs, roamKind, type HostMoment,
+  chatAt, clampRest, hostActivity, hostArgs, hostIntro, hostMcpConfig, hostModel, hostToolDefs, hostWake, isHostTool,
+  isTap, normalizeHostModels, parseHostModels, parseRest, pickHostAgent, restDelayMs, roamKind, type HostMoment, type HostWho,
 } from '../../../src/shared/teammate/petHost';
 import type { AgentProfile, Profile } from '../../../src/shared/teammate/settings';
 
@@ -15,6 +15,9 @@ const agent = (over: Partial<AgentProfile> = {}): AgentProfile => ({
 const pet: PetStatus = { id: 'naiwa', xPct: 90, yPct: 80, away: false, anims: ['idle', 'dance', 'think'] };
 const moment = (over: Partial<HostMoment> = {}): HostMoment => ({
   hour: 9, minute: 5, idleSeconds: 20, pets: [pet], recent: [], ...over,
+});
+const who = (over: Partial<HostWho> = {}): HostWho => ({
+  id: 'naiwa', persona: 'a sleepy frog', notes: [], friends: [], social: true, ...over,
 });
 
 describe('settings values', () => {
@@ -94,8 +97,22 @@ describe('tools', () => {
   it('knows its own tools only', () => {
     expect(isHostTool('pet_rest')).toBe(true);
     expect(isHostTool('pet_say')).toBe(true);
+    expect(isHostTool('pet_remember')).toBe(true);
     expect(isHostTool('say')).toBe(false);
     expect(isHostTool('bash')).toBe(false);
+  });
+
+  it('is bound to one pet: no tool takes a pet to act as', () => {
+    for (const d of hostToolDefs('normal')) {
+      expect(Object.keys((d.parameters as { properties: object }).properties)).not.toContain('pet');
+    }
+  });
+
+  it('lets a pet speak to another pet or everyone, and walk beside another', () => {
+    const props = (name: string) => (hostToolDefs('normal').find((d) => d.name === name)?.parameters as { properties: Record<string, { enum?: string[] }> }).properties;
+    expect(props('pet_say').to.enum).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori', 'all']);
+    expect(props('pet_walk').beside.enum).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
+    expect(props('pet_remember').about.enum).toEqual(['user', 'whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
   });
 });
 
@@ -129,44 +146,102 @@ describe('the host session config', () => {
 
 describe('prompts', () => {
   it('tells the agent who it is, what it may use and how to rest, in the language of the user', () => {
-    const text = hostIntro({ language: 'Simplified Chinese', activity: 'normal', moment: moment() });
+    const text = hostIntro({ language: 'Simplified Chinese', activity: 'normal', moment: moment(), who: who() });
     expect(text).toContain('Simplified Chinese');
     expect(text).toContain('pet_rest');
     expect(text).toContain(`At most ${HOST_CALLS_MAX}`);
     expect(text).toContain(`${HOST_REST.normal.min} to ${HOST_REST.normal.max}`);
-    expect(text).toContain('naiwa');
+    expect(text).toContain('You are Naiwa (naiwa)');
+    expect(text).toContain('a sleepy frog');
     expect(text).toContain('first wake-up');
+    expect(text).toContain('only pet showing');
   });
 
-  it('puts what the user typed into the first prompt of a session that begins with a chat', () => {
+  it('lists what the pet remembers, numbered, and the pets that are with it', () => {
     const text = hostIntro({
-      language: 'English', activity: 'normal', moment: moment(), says: [{ pet: 'naiwa', text: 'hi there' }],
+      language: 'English', activity: 'normal', moment: moment(),
+      who: who({
+        notes: [{ text: 'likes tea', about: null, at: 1 }, { text: 'sings off key', about: 'airi', at: 2 }],
+        friends: [{ id: 'airi', persona: 'a bright idol' }],
+      }),
     });
-    expect(text).toContain('The user types to naiwa: "hi there"');
+    expect(text).toContain('1. likes tea');
+    expect(text).toContain('2. [about airi] sings off key');
+    expect(text).toContain('airi (Airi: a bright idol)');
+    expect(text).toContain('pet_walk beside');
+  });
+
+  it('does not invite chat when the pets may not talk, or when there is nobody to talk to', () => {
+    const friends = [{ id: 'airi' as const, persona: 'a bright idol' }];
+    expect(hostIntro({ language: 'English', activity: 'normal', moment: moment(), who: who({ friends, social: false }) }))
+      .not.toContain('pet_walk beside');
+    expect(hostIntro({ language: 'English', activity: 'normal', moment: moment(), who: who() })).not.toContain('pet_walk beside');
+  });
+
+  it('puts what the pet heard into the first prompt of a session that begins with it', () => {
+    const text = hostIntro({
+      language: 'English', activity: 'normal', moment: moment(), who: who(),
+      heard: { kind: 'direct', lines: ['The user (to you): hi there'] },
+    });
+    expect(text).toContain('Someone spoke to you');
+    expect(text).toContain('The user (to you): hi there');
     expect(text).not.toContain('first wake-up');
   });
 
   it('wakes a running session with the clock, the user\'s idleness and the pets, not the whole briefing', () => {
-    const text = hostWake(moment({ hour: 23, minute: 7, idleSeconds: 400 }));
+    const text = hostWake({ moment: moment({ hour: 23, minute: 7, idleSeconds: 400 }) });
     expect(text).toContain('23:07');
     expect(text).toContain('late at night');
     expect(text).toContain('7 min ago');
     expect(text).toContain('naiwa');
-    expect(text).not.toContain('You are the mind');
+    expect(text).not.toContain('You are Naiwa');
   });
 
-  it('says what the pets said last', () => {
-    const text = hostWake(moment({ recent: [{ text: 'good morning', agoSeconds: 30 }] }));
+  it('says what the pet said last', () => {
+    const text = hostWake({ moment: moment({ recent: [{ text: 'good morning', agoSeconds: 30 }] }) });
     expect(text).toContain('"good morning" (a moment ago)');
   });
 
-  it('passes on what the user typed, kept to one line and cut to length, as a quoted string', () => {
-    const long = `a\n"b"${'c'.repeat(400)}`;
-    const text = hostChat({ says: [{ pet: 'airi', text: long }], moment: moment() });
-    const line = text.split('\n').find((l) => l.startsWith('The user types to airi:')) ?? '';
-    expect(line).toContain('\\"b\\"');
-    expect(line.length).toBeLessThan(260);
-    expect(hostChat({ says: [{ pet: null, text: 'hello' }], moment: moment() })).toContain('types to the pets');
+  it('words a wake-up by why it came: talked to, overheard, or its own timer', () => {
+    const lines = ['Airi (to you): hey'];
+    const direct = hostWake({ moment: moment(), heard: { kind: 'direct', lines } });
+    const overheard = hostWake({ moment: moment(), heard: { kind: 'overheard', lines } });
+    const timer = hostWake({ moment: moment(), heard: { kind: 'timer', lines } });
+    expect(direct).toContain('Someone is talking to you.');
+    expect(direct).toContain('Airi (to you): hey');
+    expect(overheard).toContain('Something was said.');
+    expect(overheard).toContain('Join in only if you have something to add');
+    expect(timer).toContain('Meanwhile you heard');
+    expect(hostWake({ moment: moment() })).toContain('Do something (or nothing)');
+  });
+
+  it('keeps a heard line to one line and cut to length', () => {
+    const text = hostWake({ moment: moment(), heard: { kind: 'direct', lines: [`a\nb${'c'.repeat(600)}`] } });
+    const line = text.split('\n').find((l) => l.startsWith('- a b')) ?? '';
+    expect(line.length).toBeLessThan(320);
+  });
+
+  it('says a reply goes to the group when what was heard was said in one', () => {
+    const lines = ['The user [in the group "Code club"] (to everyone): "why is my build slow?"'];
+    for (const kind of ['direct', 'overheard', 'timer'] as const) {
+      const text = hostWake({ moment: moment(), heard: { kind, lines, group: 'Code club' } });
+      expect(text).toContain('This was said in your group "Code club"');
+      expect(text).toContain('Talk it over');
+    }
+    const plain = hostWake({ moment: moment(), heard: { kind: 'direct', lines: ['Airi (to you): hey'], group: null } });
+    expect(plain).not.toContain('your group');
+    expect(hostWake({ moment: moment(), heard: { kind: 'direct', lines: ['Airi (to you): hey'] } })).not.toContain('your group');
+  });
+
+  it('tells a new session which groups its pet is in and who is in them', () => {
+    const text = hostIntro({
+      language: 'English', activity: 'normal', moment: moment(),
+      who: who({ groups: [{ name: 'Code club', members: ['naiwa', 'airi', 'hiyori'] }, { name: 'Tea', members: ['naiwa', 'whale'] }] }),
+    });
+    expect(text).toContain('you are in "Code club" (with Airi, Hiyori); "Tea" (with Whale girl)');
+    expect(text).toContain('heard only by its members');
+    expect(hostIntro({ language: 'English', activity: 'normal', moment: moment(), who: who() })).not.toContain('made groups');
+    expect(hostIntro({ language: 'English', activity: 'normal', moment: moment(), who: who({ groups: [] }) })).not.toContain('made groups');
   });
 });
 
@@ -188,12 +263,47 @@ describe('models', () => {
     ]);
   });
 
+  it('lists a model once, as its most complete entry, and leaves out what the account cannot use', () => {
+    const result = {
+      models: {
+        availableModels: [
+          { modelId: 'auto', name: 'Auto' },
+          { modelId: 'claude-haiku-4.5', name: 'Haiku', _meta: { copilotUsage: '0.33x', copilotEnablement: 'enabled' } },
+          { modelId: 'auto', name: 'Auto', _meta: { copilotUsage: '0.9x', copilotEnablement: 'enabled' } },
+          { modelId: 'gpt-9', name: 'GPT 9', _meta: { copilotUsage: '3x', copilotEnablement: 'disabled' } },
+        ],
+      },
+    };
+    expect(parseHostModels(result)).toEqual([
+      { id: 'auto', name: 'Auto', cost: '0.9x' },
+      { id: 'claude-haiku-4.5', name: 'Haiku', cost: '0.33x' },
+    ]);
+  });
+
   it('reads nothing from anything else, and the fallback has a cheap model first', () => {
     expect(parseHostModels(null)).toEqual([]);
     expect(parseHostModels({ models: {} })).toEqual([]);
     expect(parseHostModels({ models: { availableModels: 'x' } })).toEqual([]);
     expect(FALLBACK_HOST_MODELS[0].id).toBe('claude-haiku-4.5');
     expect(FALLBACK_HOST_MODELS.every((m) => hostModel(m.id) === m.id)).toBe(true);
+  });
+
+  it('reads the saved list back, leaving out what does not fit and repeats', () => {
+    expect(normalizeHostModels([
+      { id: 'a-1', name: ' Model A ', cost: '0.5x' },
+      { id: 'a-1', name: 'again', cost: null },
+      { id: 'bad id!', name: 'x', cost: null },
+      { id: 'b', name: '', cost: 'a very long cost text' },
+      { id: 'c' },
+      'x',
+      null,
+    ])).toEqual([
+      { id: 'a-1', name: 'Model A', cost: '0.5x' },
+      { id: 'b', name: 'b', cost: null },
+      { id: 'c', name: 'c', cost: null },
+    ]);
+    expect(normalizeHostModels({})).toEqual([]);
+    expect(normalizeHostModels(Array.from({ length: 150 }, (_, i) => ({ id: `m${i}`, name: 'm', cost: null })))).toHaveLength(100);
   });
 });
 

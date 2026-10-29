@@ -35,6 +35,8 @@ export interface TrayHandlers {
     stop(): void;
     openHistory(): void;
     setHistoryPaused(paused: boolean): void;
+    /** Opens the window where the pets' talk can be read and joined. */
+    openLounge(): void;
   };
 }
 
@@ -45,8 +47,8 @@ export interface TrayRoom {
   muted: boolean;
 }
 
-/** What the tray shows about the teammate; null while the feature is off, so the menu has no teammate items. */
-export type TrayTeammate = { running: boolean; historyOn: boolean; paused: boolean } | null;
+/** What the tray shows about the teammate; null while the feature is off, so the menu has no teammate items. `pets`: Copilot CLI is hosting pets. */
+export type TrayTeammate = { running: boolean; historyOn: boolean; paused: boolean; pets: boolean } | null;
 
 /**
  * What the tray shows about updates: the phase of the update checker, with the version found and the download's percent.
@@ -147,7 +149,7 @@ export class AppTray {
     if (this.destroyed) return;
     const m = this.teammate;
     if (m === teammate || (m && teammate && m.running === teammate.running && m.historyOn === teammate.historyOn
-      && m.paused === teammate.paused)) return;
+      && m.paused === teammate.paused && m.pets === teammate.pets)) return;
     this.teammate = teammate;
     this.render();
   }
@@ -218,6 +220,7 @@ export class AppTray {
     const items: MenuItemConstructorOptions[] = [];
     if (m.running) items.push({ label: t.trayMateStop, click: () => h.stop() });
     items.push({ label: t.trayMateHistory, click: () => h.openHistory() });
+    if (m.pets) items.push({ label: t.trayMateLounge, click: () => h.openLounge() });
     if (m.historyOn) {
       items.push(m.paused
         ? { label: t.trayMateResumeHistory, click: () => h.setHistoryPaused(false) }

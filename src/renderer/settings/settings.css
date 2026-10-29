@@ -200,6 +200,12 @@ main.content { overflow: auto; padding: 4px 28px 28px 20px; }
 .mateRule { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--stroke); }
 .mateRule .mateFields { margin-top: 8px; }
 .mateInstructions { display: flex; width: 100%; margin: 12px 0 8px; }
+.paneTitle { display: block; font-weight: 600; margin-bottom: 2px; }
+.petNotes { margin-top: 8px; }
+.petNote { display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+.petNote .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.petNote .tag { color: var(--text3); font-size: 12px; white-space: nowrap; }
+.petNotesNone { margin-top: 8px; }
 .tagPreview { display: flex; align-items: center; gap: 8px; }
 /* First-run card: the page's own rows inside a dialog, so the expander panes lose their wide side padding. */
 .firstRunStep { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }

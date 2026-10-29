@@ -96,6 +96,8 @@ export interface TeammateSettings {
   petHostModel: string | null;
   /** How often the host wakes, at most and at least: its own pick is kept inside the range of this. */
   petHostActivity: HostActivity;
+  /** The pets may talk to one another when Copilot CLI hosts them: greet, chat, answer each other. */
+  petSocial: boolean;
   /** The teammate may save short notes about the user and reads them back in later asks. Off until the user turns it on. */
   memory: boolean;
   /** keepDays null keeps threads until the thread cap removes them. */
@@ -132,6 +134,7 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   petRoamKind: DEFAULT_ROAM_KIND,
   petHostModel: null,
   petHostActivity: DEFAULT_HOST_ACTIVITY,
+  petSocial: true,
   memory: false,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
@@ -348,6 +351,7 @@ export function normalizeTeammate(
     petRoamKind: roamKind(r.petRoamKind),
     petHostModel: hostModel(r.petHostModel),
     petHostActivity: hostActivity(r.petHostActivity),
+    petSocial: bool(r.petSocial, DEFAULT_TEAMMATE.petSocial),
     memory: bool(r.memory, DEFAULT_TEAMMATE.memory),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),

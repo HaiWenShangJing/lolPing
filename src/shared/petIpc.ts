@@ -1,9 +1,16 @@
 import type { PetId, PetManifest } from './teammate/pet';
+import { isPetId } from './teammate/pet';
+import { GROUP_NAME_MAX, MAIN_ROOM, cleanMembers, isGroupId, type PetGroup } from './teammate/petGroups';
+import type { RoomLine } from './teammate/petSociety';
 
-/** init, pose, look and talk: main → page. drag, hit, chat and chatClose: page → main. */
+/**
+ * init, pose, look and talk: main → page. drag, hit, chat and chatClose: page → main. lounge: main → the lounge page;
+ * loungeSend and loungeGroup: the lounge page → main.
+ */
 export const PET_CH = {
   init: 'pet:init', pose: 'pet:pose', drag: 'pet:drag', look: 'pet:look', talk: 'pet:talk', hit: 'pet:hit',
-  chat: 'pet:chat', chatClose: 'pet:chatClose',
+  chat: 'pet:chat', chatClose: 'pet:chatClose', lounge: 'pet:lounge', loungeSend: 'pet:loungeSend',
+  loungeGroup: 'pet:loungeGroup',
 } as const;
 
 /** What a pet window needs to draw: `base` is the URL its frame names are under. */
@@ -44,6 +51,69 @@ export interface PetHitMsg {
   over: boolean;
 }
 
+/** The words the lounge page shows, in the user's language. */
+export interface LoungeText {
+  title: string;
+  /** Placeholder of the box the user types in. */
+  hint: string;
+  /** The first choice of who to talk to. */
+  everyone: string;
+  send: string;
+  /** Shown instead of the box while no pet is out to hear. */
+  empty: string;
+  /** What the user's own lines are called. */
+  you: string;
+  /** Said between a pet's name and a note it kept. */
+  noted: string;
+  /** The tab of the room everybody hears. */
+  main: string;
+  /** The button that makes a group, and the title of its form. */
+  newGroup: string;
+  /** Edits the open group. */
+  editGroup: string;
+  groupName: string;
+  members: string;
+  /** Under the member choices: what a group needs. */
+  membersHint: string;
+  save: string;
+  cancel: string;
+  delete: string;
+  /** What the delete button asks before it deletes, on a second press. */
+  sure: string;
+  /** Shown instead of the box while no member of the open group is out to hear. */
+  groupEmpty: string;
+}
+
+/** What the lounge knows of its groups: they and who can be spoken to in each room now (`MAIN_ROOM` and each group id). */
+export interface LoungeState {
+  groups: PetGroup[];
+  rosters: Record<string, PetId[]>;
+}
+
+/** What the lounge page starts with. */
+export interface LoungeInit extends LoungeState {
+  text: LoungeText;
+  names: Record<PetId, string>;
+  lines: RoomLine[];
+}
+
+export type LoungeMsg =
+  | { kind: 'init'; init: LoungeInit }
+  | { kind: 'line'; line: RoomLine }
+  | ({ kind: 'state' } & LoungeState);
+
+/** The user speaks in a room of the lounge, to one pet or to everyone in it. */
+export interface LoungeSend {
+  room: string;
+  to: 'all' | PetId;
+  text: string;
+}
+
+/** The user makes a group (`id` null) or changes one, or deletes one. */
+export type LoungeGroupMsg =
+  | { op: 'save'; id: string | null; name: string; members: PetId[] }
+  | { op: 'delete'; id: string };
+
 export interface PetApi {
   onInit(cb: (init: PetInit) => void): () => void;
   onPose(cb: (msg: PetPoseMsg) => void): () => void;
@@ -55,6 +125,12 @@ export interface PetApi {
   chat(text: string): void;
   /** The chat box's page: the user dismissed it. */
   closeChat(): void;
+  /** The lounge page: what happens in the room. */
+  onLounge(cb: (msg: LoungeMsg) => void): () => void;
+  /** The lounge page: the user said something. */
+  loungeSend(msg: LoungeSend): void;
+  /** The lounge page: the user made, changed or deleted a group. */
+  loungeGroup(msg: LoungeGroupMsg): void;
 }
 
 /** A tap is a press and release in about the same place, quickly; two taps close together make a double tap. */
@@ -83,6 +159,26 @@ export function parsePetDrag(raw: unknown): PetDragMsg | null {
   const r = raw as Record<string, unknown>;
   if ((r.phase !== 'start' && r.phase !== 'move' && r.phase !== 'end') || !isNum(r.x) || !isNum(r.y)) return null;
   return { phase: r.phase, x: r.x, y: r.y };
+}
+
+/** What the lounge page sent: a room, one pet or everyone, and the words cut as a pet chat is; null for anything else. */
+export function parseLoungeSend(raw: unknown): LoungeSend | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const to = r.to === 'all' ? 'all' : isPetId(r.to) ? r.to : null;
+  const room = r.room === MAIN_ROOM || isGroupId(r.room) ? r.room : null;
+  const text = parsePetChat(r.text);
+  return to && room && text ? { room, to, text } : null;
+}
+
+/** What the lounge page sent about a group; the name and members are checked again where they are saved. */
+export function parseLoungeGroup(raw: unknown): LoungeGroupMsg | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.op === 'delete') return isGroupId(r.id) ? { op: 'delete', id: r.id } : null;
+  if (r.op !== 'save' || typeof r.name !== 'string') return null;
+  if (r.id !== null && !isGroupId(r.id)) return null;
+  return { op: 'save', id: r.id, name: r.name.slice(0, GROUP_NAME_MAX * 4), members: cleanMembers(r.members) };
 }
 
 export function parsePetHit(raw: unknown): PetHitMsg | null {

@@ -3,25 +3,31 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AcpSession } from '../../../src/main/teammate/acp/session';
 import { AgentStartError } from '../../../src/main/teammate/agents/runner';
 import { bridgeHandler } from '../../../src/main/teammate/askController';
-import { PetHost } from '../../../src/main/teammate/petHost';
+import { PetHost, type PetNotes, type PetRoom } from '../../../src/main/teammate/petHost';
 import { strings } from '../../../src/shared/i18n';
 import { DEFAULT_SETTINGS, type Settings } from '../../../src/shared/settings';
-import type { PetCommand, PetDriveResult, PetStatus } from '../../../src/shared/teammate/petControl';
+import { DEFAULT_PETS, type PetId } from '../../../src/shared/teammate/pet';
+import type { PetCommand, PetDriveResult, PetStatus, SayTo } from '../../../src/shared/teammate/petControl';
 import {
-  HOST_CALLS_MAX, HOST_CHAT_MAX, HOST_IDLE_SECONDS, HOST_REST, HOST_SERVER, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, restDelayMs,
+  HOST_CALLS_MAX, HOST_IDLE_SECONDS, HOST_REST, HOST_SERVER, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, restDelayMs,
 } from '../../../src/shared/teammate/petHost';
+import type { PetNote } from '../../../src/shared/teammate/petMind';
+import type { RoomLine } from '../../../src/shared/teammate/petSociety';
 import { DEFAULT_TEAMMATE, type AgentProfile, type Profile } from '../../../src/shared/teammate/settings';
 
 const words = strings('en').teammate.ask;
+const NAME = words.petName.naiwa;
 const FIRST_MS = 10_000;
 const RETRY_MS = 60_000;
 const EVENT_RETRY_MS = 5_000;
 const CANCEL_GRACE_MS = 10_000;
 const REST_GRACE_MS = 2_500;
+const WAKE_TTL_MS = 120_000;
 const BACKOFF_MS = [30_000, 60_000, 120_000];
 const USUAL_MS = restDelayMs('normal', null, 0.5);
 const TEMP = 'C:\\tmp\\lolping-teammate';
-const dirOf = (n: number): string => join(TEMP, `host-${n}`);
+const dirOf = (n: number): string => join(TEMP, `host-naiwa-${n}`);
+const HOUR = new Date(2026, 0, 1, 9, 5);
 
 const text = (r: { content: unknown[] }): string => (r.content[0] as { text?: string } | undefined)?.text ?? '';
 
@@ -32,6 +38,10 @@ const agent = (over: Partial<AgentProfile> = {}): AgentProfile => ({
 
 const pet: PetStatus = { id: 'naiwa', xPct: 90, yPct: 80, away: false, anims: ['idle', 'dance'] };
 
+const line = (seq: number, from: RoomLine['from'], to: RoomLine['to'], text: string, room = 'main'): RoomLine => ({
+  seq, from, to, text, at: HOUR.getTime(), kind: 'say', room,
+});
+
 interface Sess {
   command: string;
   args: string[];
@@ -39,6 +49,7 @@ interface Sess {
   env: NodeJS.ProcessEnv;
   token: string;
   prompts: string[];
+  requests: Array<{ method: string; params: unknown }>;
   notes: Array<{ method: string; params: unknown }>;
   kills: number;
   closed: boolean;
@@ -59,6 +70,10 @@ interface Options {
   startThrows?: Error;
   bridgeDown?: boolean;
   lang?: 'en' | 'zh-CN';
+  /** The agent refuses to change its model in a running session. */
+  setModelFails?: boolean;
+  /** The pets refuse every command, as they do while an ask is on screen. */
+  driveFails?: boolean;
   /** Runs while the agent is still opening its session, as its connection to the bridge does. */
   whileStarting?: (host: PetHost, token: string) => void;
 }
@@ -68,7 +83,8 @@ function harness(opts: Options = {}) {
     ...DEFAULT_SETTINGS,
     teammate: {
       ...DEFAULT_TEAMMATE, profiles: opts.profiles ?? [agent()], defaultProfile: 'cp', petRoam: false, petRoamKind: 'host',
-      petHostActivity: 'normal', petHostModel: null,
+      petHostActivity: 'normal', petHostModel: null, petSocial: true,
+      pets: { ...DEFAULT_PETS, naiwa: { ...DEFAULT_PETS.naiwa, on: true } },
     },
   };
   const driven: Array<{ cmd: PetCommand; from: string }> = [];
@@ -78,20 +94,44 @@ function harness(opts: Options = {}) {
   const made: string[] = [];
   const removed: string[] = [];
   const written = new Map<string, string>();
-  const state = { enabled: true, busy: false, idle: 5, pets: [pet] as PetStatus[] };
+  const told: string[] = [];
+  const spoken: Array<{ who: PetId; text: string; to: SayTo | null }> = [];
+  const noted: Array<{ who: PetId; text: string }> = [];
+  const kept = new Map<PetId, readonly PetNote[]>();
+  const state = {
+    enabled: true, busy: false, idle: 5, pets: [pet] as PetStatus[], stagger: 0, lines: [] as RoomLine[], at: HOUR.getTime(),
+    groups: {} as Record<string, string>, group: null as string | null,
+    mine: [] as Array<{ name: string; members: PetId[] }>,
+  };
+
+  const room: PetRoom = {
+    heard: (_me, seq) => ({
+      lines: state.lines.filter((l) => l.seq > seq), seq: state.lines.at(-1)?.seq ?? seq, groups: state.groups, group: state.group,
+    }),
+    said: (who, text, to) => { spoken.push({ who, text, to }); },
+    noted: (who, text) => { noted.push({ who, text }); },
+    groups: () => state.mine,
+  };
+  const minds: PetNotes = {
+    notes: (id) => kept.get(id) ?? [],
+    set: (id, notes) => { kept.set(id, notes); },
+  };
 
   const makeSession = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): AcpSession => {
     const closers: Array<() => void> = [];
     let turn: { ok(): void; err(e: Error): void } | null = null;
     const s: Sess = {
-      command, args, cwd, env, token: tokens.at(-1) ?? '', prompts: [], notes: [], kills: 0, closed: false,
+      command, args, cwd, env, token: tokens.at(-1) ?? '', prompts: [], requests: [], notes: [], kills: 0, closed: false,
       finish: () => turn?.ok(),
       crash: (m) => turn?.err(new Error(m)),
     };
     sessions.push(s);
     const client = {
       request: (method: string, params: { prompt?: Array<{ text: string }> }) => {
-        if (method !== 'session/prompt') return Promise.resolve({});
+        if (method !== 'session/prompt') {
+          s.requests.push({ method, params });
+          return opts.setModelFails && method === 'session/set_model' ? Promise.reject(new Error('no such model')) : Promise.resolve({});
+        }
         s.prompts.push(params.prompt?.[0]?.text ?? '');
         return new Promise((resolve, reject) => { turn = { ok: () => resolve({ stopReason: 'end_turn' }), err: reject }; });
       },
@@ -111,19 +151,25 @@ function harness(opts: Options = {}) {
   };
 
   const host = new PetHost({
+    who: 'naiwa',
     settings: () => settings,
     enabled: () => state.enabled,
     busy: () => state.busy,
     lang: () => opts.lang ?? 'en',
-    now: () => new Date(2026, 0, 1, 9, 5),
+    now: () => new Date(state.at),
     idleSeconds: () => state.idle,
     pet: {
       drive: (cmd, from): PetDriveResult => {
         driven.push({ cmd, from });
-        return { ok: true, text: 'done' };
+        return opts.driveFails ? { ok: false, text: 'The pets are busy.' } : { ok: true, text: 'done' };
       },
       shown: () => state.pets,
     },
+    room,
+    minds,
+    names: () => ({ pet: strings(opts.lang ?? 'en').teammate.ask.petName, everyone: words.everyone }),
+    tell: (text) => { told.push(text); },
+    stagger: () => state.stagger,
     start: async (command, args, cwd, env) => {
       opts.whileStarting?.(host, tokens.at(-1) ?? '');
       if (opts.startThrows) throw opts.startThrows;
@@ -179,7 +225,10 @@ function harness(opts: Options = {}) {
   const settle = () => vi.waitFor(() => expect(pending()).toHaveLength(1), { interval: 1 });
   const said = () => driven.filter((d) => d.cmd.kind === 'say').map((d) => (d.cmd as { text: string }).text);
   const delays = () => pending().map((t) => t.ms);
-  return { host, settings, driven, sessions, timers, made, removed, written, state, tokens, pending, fire, prompts, turnOn, turnOff, wake, reply, settle, said, delays };
+  return {
+    host, settings, driven, sessions, timers, made, removed, written, state, tokens, pending, fire, prompts, turnOn, turnOff, wake,
+    reply, settle, said, delays, told, spoken, noted, kept,
+  };
 }
 
 describe('PetHost schedule', () => {
@@ -219,6 +268,28 @@ describe('PetHost schedule', () => {
     h.host.sync();
     expect(h.pending()).toEqual([]);
   });
+
+  it('is on only while its own pet is turned on, and follows that setting', () => {
+    const h = harness();
+    h.settings.teammate.pets.naiwa.on = false;
+    h.turnOn();
+    expect(h.host.active).toBe(false);
+    expect(h.pending()).toEqual([]);
+    h.settings.teammate.pets.naiwa.on = true;
+    h.host.sync();
+    expect(h.host.active).toBe(true);
+    h.settings.teammate.pets.naiwa.on = false;
+    h.host.sync();
+    expect(h.host.active).toBe(false);
+    expect(h.pending()).toEqual([]);
+  });
+
+  it('makes its first wake-up later by the stagger, so the pets do not all start at once', () => {
+    const h = harness();
+    h.state.stagger = 14_000;
+    h.turnOn();
+    expect(h.delays()).toEqual([FIRST_MS + 14_000]);
+  });
 });
 
 describe('PetHost wake-ups', () => {
@@ -232,11 +303,39 @@ describe('PetHost wake-ups', () => {
     expect(s.args).toEqual(hostArgs({ model: null, configPath: join(dirOf(1), 'mcp.json') }));
     expect(s.env).toEqual({ PATH: 'C:\\bin' });
     expect(h.made).toEqual([dirOf(1)]);
-    expect(s.token).toMatch(/^host-1\.[0-9a-f]{32}$/);
+    expect(s.token).toMatch(/^host-naiwa-1\.[0-9a-f]{32}$/);
     const config = JSON.parse(h.written.get(join(dirOf(1), 'mcp.json')) ?? '{}') as { mcpServers: Record<string, { env: Record<string, string> }> };
     expect(config.mcpServers[HOST_SERVER].env.LOLPING_ASK).toBe(s.token);
     expect(s.prompts[0]).toContain('first wake-up');
     expect(s.prompts[0]).toContain('pet_rest');
+    expect(s.prompts[0]).toContain('You are Naiwa (naiwa)');
+  });
+
+  it('briefs the session with the pet\'s own character, notes, and the pets beside it', async () => {
+    const h = harness();
+    h.state.pets = [pet, { ...pet, id: 'airi' }];
+    h.settings.teammate.pets.naiwa.persona = 'a sleepy frog who loves tea';
+    h.settings.teammate.pets.airi.persona = 'a bright idol';
+    h.kept.set('naiwa', [{ text: 'likes jasmine tea', about: null, at: 1 }, { text: 'is teasing about naps', about: 'airi', at: 2 }]);
+    h.turnOn();
+    const s = await h.wake(1);
+    expect(s.prompts[0]).toContain('a sleepy frog who loves tea');
+    expect(s.prompts[0]).toContain('airi (Airi: a bright idol)');
+    expect(s.prompts[0]).toContain('likes jasmine tea');
+    expect(s.prompts[0]).toContain('pet_walk beside');
+  });
+
+  it('does not tell a lone pet it has company, or that it may chat, when pets may not talk', async () => {
+    const h = harness();
+    h.settings.teammate.petSocial = false;
+    h.state.pets = [pet, { ...pet, id: 'airi' }];
+    h.turnOn();
+    const s = await h.wake(1);
+    expect(s.prompts[0]).not.toContain('pet_walk beside');
+    const lone = harness();
+    lone.turnOn();
+    const l = await lone.wake(1);
+    expect(l.prompts[0]).toContain('only pet showing');
   });
 
   it('wakes the same session again with a short note, and sleeps as long as the agent asked', async () => {
@@ -265,13 +364,14 @@ describe('PetHost wake-ups', () => {
     expect(h.delays()).toEqual([USUAL_MS]);
   });
 
-  it('tells the pets what the agent says in its name, and tells the agent what the pets said last', async () => {
+  it('tells the pets what the agent says in its name, and tells the agent what it said last', async () => {
     const h = harness();
     h.turnOn();
     const s = await h.wake(1);
     await h.reply(s, { say: 'good morning', rest: 120 });
     await h.settle();
-    expect(h.driven).toEqual([{ cmd: { kind: 'say', pet: null, text: 'good morning', mood: null }, from: 'Copilot CLI' }]);
+    expect(h.driven).toEqual([{ cmd: { kind: 'say', pet: 'naiwa', text: 'good morning', mood: null }, from: NAME }]);
+    expect(h.spoken).toEqual([{ who: 'naiwa', text: 'good morning', to: null }]);
     await h.wake(2);
     expect(s.prompts[1]).toContain('"good morning"');
   });
@@ -377,34 +477,243 @@ describe('PetHost model', () => {
     expect(s.args.slice(s.args.indexOf('--model'))).toEqual(['--model', 'claude-haiku-4.5']);
   });
 
-  it('starts over with another model when it is changed, and keeps going when it is not', async () => {
+  it('changes the model of the running session as it is, without starting over', async () => {
     const h = harness();
     h.turnOn();
     const s = await h.wake(1);
     await h.reply(s, { rest: 120 });
     await h.settle();
     h.host.sync();
-    expect(s.closed).toBe(false);
+    expect(s.requests).toEqual([]);
     h.settings.teammate.petHostModel = 'gpt-6-sol';
     h.host.sync();
-    expect(s.closed).toBe(true);
-    expect(h.removed).toContain(dirOf(1));
-    expect(h.delays()).toEqual([FIRST_MS]);
+    expect(s.requests).toEqual([{ method: 'session/set_model', params: { sessionId: 'sess-1', modelId: 'gpt-6-sol' } }]);
+    expect(s.closed).toBe(false);
+    h.host.sync();
+    expect(s.requests).toHaveLength(1);
+    await h.wake(2);
+    expect(h.sessions).toHaveLength(1);
+  });
+
+  it('gives each pet its own model over the default, and follows the default again when it is cleared', async () => {
+    const h = harness();
+    h.settings.teammate.petHostModel = 'claude-haiku-4.5';
+    h.settings.teammate.pets.naiwa.model = 'gpt-6-sol';
+    h.turnOn();
+    const s = await h.wake(1);
+    expect(s.args.slice(s.args.indexOf('--model'))).toEqual(['--model', 'gpt-6-sol']);
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    h.settings.teammate.petHostModel = 'gpt-5.3-codex';
+    h.host.sync();
+    expect(s.requests).toEqual([]);
+    h.settings.teammate.pets.naiwa.model = 'claude-sonnet-5.5';
+    h.host.sync();
+    expect(s.requests).toEqual([{ method: 'session/set_model', params: { sessionId: 'sess-1', modelId: 'claude-sonnet-5.5' } }]);
+  });
+
+  it('starts a new session when the pet goes back to the agent\'s own model, which cannot be asked for live', async () => {
+    const h = harness();
+    h.settings.teammate.petHostModel = null;
+    h.settings.teammate.pets.naiwa.model = 'gpt-6-sol';
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    h.settings.teammate.pets.naiwa.model = null;
+    h.host.sync();
+    expect(s.requests).toEqual([]);
     const next = await h.wake(2);
     expect(next).not.toBe(s);
-    expect(next.args).toContain('gpt-6-sol');
+    expect(s.closed).toBe(true);
+    expect(next.args).not.toContain('--model');
     expect(next.prompts[0]).toContain('first wake-up');
+  });
+
+  it('starts a new session when the agent refuses the model', async () => {
+    const h = harness({ setModelFails: true });
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    h.settings.teammate.petHostModel = 'nope';
+    h.host.sync();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    const next = await h.wake(2);
+    expect(next).not.toBe(s);
+    expect(s.closed).toBe(true);
+  });
+
+  it('keeps the model it was told for a session that starts later', async () => {
+    const h = harness();
+    h.turnOn();
+    h.settings.teammate.pets.naiwa.model = 'gpt-6-sol';
+    h.host.sync();
+    const s = await h.wake(1);
+    expect(s.args).toContain('gpt-6-sol');
   });
 });
 
-describe('PetHost chat', () => {
-  it('wakes the agent at once for what the user typed, and puts it in the briefing of a new session', async () => {
+describe('PetHost character and notes', () => {
+  it('starts over with the new character at the next wake-up, never in the middle of one', async () => {
     const h = harness();
     h.turnOn();
-    expect(h.host.chat('naiwa', '  hello  ')).toBe(true);
+    const s = await h.wake(1);
+    h.settings.teammate.pets.naiwa.persona = 'a grumpy poet';
+    h.host.sync();
+    expect(s.closed).toBe(false);
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    const next = await h.wake(2);
+    expect(next).not.toBe(s);
+    expect(s.closed).toBe(true);
+    expect(next.prompts[0]).toContain('a grumpy poet');
+  });
+
+  it('reads the notes again once the user has changed them', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    h.kept.set('naiwa', []);
+    h.host.rebrief();
+    const next = await h.wake(2);
+    expect(next).not.toBe(s);
+    expect(next.prompts[0]).toContain('first wake-up');
+  });
+
+  it('keeps a note, tells the room, and counts it as an action', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    const done = await h.host.call(s.token, 'pet_remember', { note: 'The user likes jasmine tea', about: 'user' });
+    expect(done.isError).toBe(false);
+    expect(h.kept.get('naiwa')?.map((n) => [n.text, n.about])).toEqual([['The user likes jasmine tea', 'user']]);
+    expect(h.noted).toEqual([{ who: 'naiwa', text: 'The user likes jasmine tea' }]);
+    await h.reply(s, { say: null, rest: 120 });
+    await h.settle();
+    expect(h.told).toEqual([]);
+  });
+
+  it('does not keep what is empty, and is told so', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    expect((await h.host.call(s.token, 'pet_remember', { note: '   ' })).isError).toBe(true);
+    expect(h.kept.get('naiwa') ?? []).toEqual([]);
+    expect(h.noted).toEqual([]);
+  });
+
+  it('forgets a note by its number, and knows when there is no such note', async () => {
+    const h = harness();
+    h.kept.set('naiwa', [{ text: 'one', about: null, at: 1 }, { text: 'two', about: null, at: 2 }]);
+    h.turnOn();
+    const s = await h.wake(1);
+    expect((await h.host.call(s.token, 'pet_forget', { number: 3 })).isError).toBe(true);
+    expect((await h.host.call(s.token, 'pet_forget', { number: 'one' })).isError).toBe(true);
+    expect(h.kept.get('naiwa')).toHaveLength(2);
+    const done = await h.host.call(s.token, 'pet_forget', { number: 1 });
+    expect(text(done)).toContain('one');
+    expect(h.kept.get('naiwa')?.map((n) => n.text)).toEqual(['two']);
+  });
+
+  it('files a note about itself as a note about nobody in particular', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.host.call(s.token, 'pet_remember', { note: 'I love naps', about: 'naiwa' });
+    expect(h.kept.get('naiwa')?.[0]?.about).toBeNull();
+  });
+});
+
+describe('PetHost company', () => {
+  it('is always its own pet: a pet named in a call is ignored', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.host.call(s.token, 'pet_say', { text: 'hi', pet: 'airi' });
+    await h.host.call(s.token, 'pet_play', { mood: 'happy', pet: 'airi' });
+    expect(h.driven.map((d) => (d.cmd as { pet: string | null }).pet)).toEqual(['naiwa', 'naiwa']);
+  });
+
+  it('shows who it talks to in the bubble\'s header, and tells the room', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.host.call(s.token, 'pet_say', { text: 'hey Airi', to: 'airi' });
+    await h.host.call(s.token, 'pet_say', { text: 'hello all', to: 'all' });
+    await h.host.call(s.token, 'pet_say', { text: 'just me', to: 'naiwa' });
+    expect(h.driven.map((d) => d.from)).toEqual([`${NAME} → ${words.petName.airi}`, `${NAME} → ${words.everyone}`, NAME]);
+    expect(h.spoken).toEqual([
+      { who: 'naiwa', text: 'hey Airi', to: 'airi' },
+      { who: 'naiwa', text: 'hello all', to: 'all' },
+      { who: 'naiwa', text: 'just me', to: null },
+    ]);
+  });
+
+  it('can walk beside another pet', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.host.call(s.token, 'pet_walk', { beside: 'airi' });
+    expect(h.driven.map((d) => d.cmd)).toEqual([{ kind: 'walk', pet: 'naiwa', to: { beside: 'airi' } }]);
+  });
+
+  it('does not tell the room a line that did not show, nor one that was no good', async () => {
+    const h = harness({ driveFails: true });
+    h.turnOn();
+    const s = await h.wake(1);
+    expect((await h.host.call(s.token, 'pet_say', { text: 'hi' })).isError).toBe(true);
+    expect((await h.host.call(s.token, 'pet_say', { text: '' })).isError).toBe(true);
+    expect(h.spoken).toEqual([]);
+  });
+
+  it('tells the agent what it heard, in the prompt of a new session and of a running one', async () => {
+    const h = harness();
+    h.state.lines = [line(1, 'airi', 'naiwa', 'Morning, froggy!')];
+    h.turnOn();
+    const s = await h.wake(1);
+    expect(s.prompts[0]).toContain('Morning, froggy!');
+    expect(s.prompts[0]).toContain('Airi');
+    expect(s.prompts[0]).not.toContain('first wake-up');
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    h.state.lines = [...h.state.lines, line(2, 'user', 'all', 'hello pets')];
+    await h.wake(2);
+    expect(s.prompts[1]).toContain('hello pets');
+    expect(s.prompts[1]).not.toContain('Morning, froggy!');
+    await h.reply(s, { rest: 120 });
+    await h.settle();
+    await h.wake(3);
+    expect(s.prompts[2]).not.toContain('hello pets');
+  });
+});
+
+describe('PetHost nudges', () => {
+  it('wakes the agent at once for a line said to it, and says why in the first prompt', async () => {
+    const h = harness();
+    h.turnOn();
+    h.state.lines = [line(1, 'user', 'naiwa', 'hello')];
+    expect(h.host.nudge('direct', true)).toBe(true);
     await vi.waitFor(() => expect(h.prompts()).toBe(1));
-    expect(h.sessions[0].prompts[0]).toContain('The user types to naiwa: "hello"');
-    expect(h.sessions[0].prompts[0]).toContain('pet_rest');
+    expect(h.sessions[0].prompts[0]).toContain('Someone spoke to you');
+    expect(h.sessions[0].prompts[0]).toContain('hello');
+  });
+
+  it('tells it when a line was said in one of its groups, and lists its groups in the briefing', async () => {
+    const h = harness();
+    h.turnOn();
+    h.state.groups = { g1: 'Code club' };
+    h.state.group = 'Code club';
+    h.state.mine = [{ name: 'Code club', members: ['naiwa', 'airi'] }];
+    h.state.lines = [line(1, 'user', 'all', 'why is my build slow?', 'g1')];
+    expect(h.host.nudge('direct', true)).toBe(true);
+    await vi.waitFor(() => expect(h.prompts()).toBe(1));
+    const first = h.sessions[0].prompts[0];
+    expect(first).toContain('[in the group "Code club"]');
+    expect(first).toContain('This was said in your group "Code club"');
+    expect(first).toContain('you are in "Code club" (with Airi)');
   });
 
   it('passes it to a running session as a short note, not the whole briefing', async () => {
@@ -413,67 +722,107 @@ describe('PetHost chat', () => {
     const s = await h.wake(1);
     await h.reply(s, { rest: 300 });
     await h.settle();
-    h.host.chat(null, 'are you there?');
+    h.state.lines = [line(1, 'user', 'naiwa', 'are you there?')];
+    h.host.nudge('direct', true);
     await vi.waitFor(() => expect(h.prompts()).toBe(2));
-    expect(s.prompts[1]).toContain('The user types to the pets: "are you there?"');
+    expect(s.prompts[1]).toContain('Someone is talking to you.');
+    expect(s.prompts[1]).toContain('are you there?');
     expect(s.prompts[1]).not.toContain('first wake-up');
     expect(h.sessions).toHaveLength(1);
   });
 
-  it('is heard while the user is away, but not while an ask is running, and is tried again in five seconds', async () => {
+  it('words an overheard line differently, and only when something was said', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.reply(s, { rest: 300 });
+    await h.settle();
+    h.state.lines = [line(1, 'airi', 'hiyori', 'Nice weather')];
+    h.host.nudge('overheard', false);
+    await vi.waitFor(() => expect(h.prompts()).toBe(2));
+    expect(s.prompts[1]).toContain('Something was said.');
+    expect(s.prompts[1]).toContain('You overheard');
+  });
+
+  it('keeps a direct wake over an overheard one that came after it', async () => {
+    const h = harness();
+    h.turnOn();
+    h.state.busy = true;
+    h.state.lines = [line(1, 'user', 'naiwa', 'psst')];
+    h.host.nudge('direct', true);
+    await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
+    h.host.nudge('overheard', false);
+    await vi.waitFor(() => expect(h.timers).toHaveLength(3)); // the retry was cut short and tried again
+    h.state.busy = false;
+    h.fire(h.pending().at(-1));
+    await vi.waitFor(() => expect(h.prompts()).toBe(1));
+    expect(h.sessions[0].prompts[0]).toContain('Someone spoke to you');
+  });
+
+  it('forgets a nudge that waited too long for the pets to be free', async () => {
+    const h = harness();
+    h.turnOn();
+    h.state.busy = true;
+    h.state.lines = [line(1, 'user', 'naiwa', 'hi')];
+    h.host.nudge('direct', true);
+    await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
+    h.state.at += WAKE_TTL_MS + 1;
+    h.state.busy = false;
+    h.fire(h.pending().at(-1));
+    await vi.waitFor(() => expect(h.prompts()).toBe(1));
+    expect(h.sessions[0].prompts[0]).toContain('hi');
+    expect(h.sessions[0].prompts[0]).toContain('Meanwhile you heard');
+  });
+
+  it('is heard while the user is away when the user spoke, but not while an ask is running, and is tried again in five seconds', async () => {
     const h = harness();
     h.turnOn();
     h.state.idle = HOST_IDLE_SECONDS * 3;
     h.state.busy = true;
-    h.host.chat('naiwa', 'hi');
+    h.state.lines = [line(1, 'user', 'naiwa', 'hi')];
+    h.host.nudge('direct', true);
     await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
     expect(h.sessions).toEqual([]);
     h.state.busy = false;
     h.fire(h.pending().at(-1));
     await vi.waitFor(() => expect(h.prompts()).toBe(1));
-    expect(h.sessions[0].prompts[0]).toContain('The user types to naiwa: "hi"');
+    expect(h.sessions[0].prompts[0]).toContain('hi');
+  });
+
+  it('does not wake for a pet while the user is away', async () => {
+    const h = harness();
+    h.turnOn();
+    h.state.idle = HOST_IDLE_SECONDS * 3;
+    h.state.lines = [line(1, 'airi', 'naiwa', 'hey')];
+    h.host.nudge('direct', false);
+    await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
+    expect(h.sessions).toEqual([]);
   });
 
   it('does not spin while the words wait for the pets to be ready', async () => {
     const h = harness();
     h.turnOn();
     h.state.busy = true;
-    h.host.chat('naiwa', 'hi');
+    h.state.lines = [line(1, 'user', 'naiwa', 'hi')];
+    h.host.nudge('direct', true);
     await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
     await new Promise((r) => setTimeout(r, 20));
     expect(h.timers).toHaveLength(2); // the first sleep and one retry, nothing more
   });
 
-  it('keeps the last few lines, cut to length', async () => {
+  it('hears nothing while hosting is off, its pet is off, or it has given up', async () => {
     const h = harness();
+    expect(h.host.nudge('direct', true)).toBe(false);
     h.turnOn();
-    h.state.busy = true;
-    for (const n of [1, 2, 3, 4]) h.host.chat('naiwa', n === 4 ? 'x'.repeat(HOST_CHAT_MAX + 50) : `line ${n}`);
-    await vi.waitFor(() => expect(h.delays()).toEqual([EVENT_RETRY_MS]));
-    h.state.busy = false;
-    h.fire(h.pending().at(-1));
-    await vi.waitFor(() => expect(h.prompts()).toBe(1));
-    const first = h.sessions[0].prompts[0];
-    expect(first).not.toContain('line 1');
-    expect(first).toContain('line 2');
-    expect(first).toContain('line 3');
-    expect(first).toContain('x'.repeat(HOST_CHAT_MAX));
-    expect(first).not.toContain('x'.repeat(HOST_CHAT_MAX + 1));
-  });
-
-  it('hears nothing while hosting is off, has given up, or the line is empty', async () => {
-    const h = harness();
-    expect(h.host.chat('naiwa', 'hi')).toBe(false);
-    h.turnOn();
-    expect(h.host.chat('naiwa', '   ')).toBe(false);
-    expect(h.host.chat('naiwa', 'hi')).toBe(true);
-    h.turnOff();
-    expect(h.host.chat('naiwa', 'hi')).toBe(false);
+    expect(h.host.nudge('direct', true)).toBe(true);
+    h.settings.teammate.pets.naiwa.on = false;
+    h.host.sync();
+    expect(h.host.nudge('direct', true)).toBe(false);
     const g = harness({ profiles: [] });
     g.turnOn();
     g.fire(g.pending().at(-1));
     await vi.waitFor(() => expect(g.host.active).toBe(false));
-    expect(g.host.chat('naiwa', 'hi')).toBe(false);
+    expect(g.host.nudge('direct', true)).toBe(false);
   });
 });
 
@@ -489,13 +838,13 @@ describe('PetHost failures', () => {
     h.turnOn();
     await silent(h, 1);
     await h.settle();
-    expect(h.said()).toEqual([words.hostSilent('Copilot CLI')]);
+    expect(h.told).toEqual([words.hostSilent(NAME)]);
     expect(h.sessions[0].closed).toBe(true);
     expect(h.delays()).toEqual([BACKOFF_MS[0]]);
     expect(h.host.active).toBe(true);
     await silent(h, 2);
     await h.settle();
-    expect(h.said()).toHaveLength(1);
+    expect(h.told).toHaveLength(1);
     expect(h.delays()).toEqual([BACKOFF_MS[1]]);
     expect(h.sessions).toHaveLength(2);
   });
@@ -509,7 +858,7 @@ describe('PetHost failures', () => {
     await h.settle();
     await silent(h, 3);
     await vi.waitFor(() => expect(h.host.active).toBe(false));
-    expect(h.said()).toEqual([words.hostSilent('Copilot CLI'), words.hostGaveUp]);
+    expect(h.told).toEqual([words.hostSilent(NAME), words.hostGaveUp]);
     expect(h.pending()).toEqual([]);
     h.host.sync();
     expect(h.pending()).toEqual([]);
@@ -530,7 +879,7 @@ describe('PetHost failures', () => {
     expect(h.delays()).toEqual([120_000]);
     await silent(h, 3);
     await h.settle();
-    expect(h.said().filter((t) => t === words.hostSilent('Copilot CLI'))).toHaveLength(2);
+    expect(h.told.filter((t) => t === words.hostSilent(NAME))).toHaveLength(2);
   });
 
   it('says what went wrong when the agent fails a wake-up, naming it as the user named it', async () => {
@@ -539,7 +888,7 @@ describe('PetHost failures', () => {
     const s = await h.wake(1);
     s.crash('no quota left');
     await h.settle();
-    expect(h.said()).toEqual([words.agent.error('My Copilot', 'no quota left')]);
+    expect(h.told).toEqual([words.agent.error('My Copilot', 'no quota left')]);
     expect(s.closed).toBe(true);
   });
 
@@ -560,7 +909,7 @@ describe('PetHost failures', () => {
     h.turnOn();
     h.fire(h.pending().at(-1));
     await vi.waitFor(() => expect(h.host.active).toBe(false));
-    expect(h.said()).toEqual([words.hostNoAgent]);
+    expect(h.told).toEqual([words.hostNoAgent]);
     expect(h.sessions).toEqual([]);
     expect(h.pending()).toEqual([]);
   });
@@ -570,7 +919,7 @@ describe('PetHost failures', () => {
     h.turnOn();
     h.fire(h.pending().at(-1));
     await vi.waitFor(() => expect(h.host.active).toBe(false));
-    expect(h.said()).toEqual([words.agent.notFound('copilot')]);
+    expect(h.told).toEqual([words.agent.notFound('copilot')]);
     expect(h.removed).toEqual([dirOf(1)]);
   });
 
@@ -579,7 +928,7 @@ describe('PetHost failures', () => {
     h.turnOn();
     h.fire(h.pending().at(-1));
     await vi.waitFor(() => expect(h.delays()).toEqual([BACKOFF_MS[0]]));
-    expect(h.said()).toEqual([words.agent.noStart('copilot')]);
+    expect(h.told).toEqual([words.agent.noStart('copilot')]);
     expect(h.host.active).toBe(true);
   });
 
@@ -588,7 +937,7 @@ describe('PetHost failures', () => {
     h.turnOn();
     h.fire(h.pending().at(-1));
     await vi.waitFor(() => expect(h.delays()).toEqual([BACKOFF_MS[0]]));
-    expect(h.said()).toEqual([words.agent.noBridge]);
+    expect(h.told).toEqual([words.agent.noBridge]);
     expect(h.sessions).toEqual([]);
   });
 
@@ -596,7 +945,7 @@ describe('PetHost failures', () => {
     const h = harness({ lang: 'zh-CN', profiles: [] });
     h.turnOn();
     h.fire(h.pending().at(-1));
-    await vi.waitFor(() => expect(h.said()).toEqual([strings('zh-CN').teammate.ask.hostNoAgent]));
+    await vi.waitFor(() => expect(h.told).toEqual([strings('zh-CN').teammate.ask.hostNoAgent]));
   });
 });
 
@@ -654,8 +1003,10 @@ describe('PetHost tools', () => {
 
   it('offers the pet tools to its own session only', async () => {
     const { h, s } = await setup();
-    expect(h.host.tools(s.token)?.map((t) => t.name)).toEqual(['pet_status', 'pet_say', 'pet_walk', 'pet_play', 'pet_rest']);
-    expect(h.host.tools('host-9.' + '0'.repeat(32))).toBeNull();
+    expect(h.host.tools(s.token)?.map((t) => t.name)).toEqual([
+      'pet_status', 'pet_say', 'pet_walk', 'pet_play', 'pet_remember', 'pet_forget', 'pet_rest',
+    ]);
+    expect(h.host.tools('host-naiwa-9.' + '0'.repeat(32))).toBeNull();
     expect(h.host.tools('roam-1.' + '0'.repeat(32))).toBeNull();
   });
 
@@ -717,7 +1068,7 @@ describe('PetHost while the session starts', () => {
     });
     h.turnOn();
     const s = await h.wake(1);
-    expect(seen).toEqual(['pet_status', 'pet_say', 'pet_walk', 'pet_play', 'pet_rest']);
+    expect(seen).toEqual(['pet_status', 'pet_say', 'pet_walk', 'pet_play', 'pet_remember', 'pet_forget', 'pet_rest']);
     expect(other).toBeNull();
     expect(h.host.tools(s.token)).not.toBeNull();
   });

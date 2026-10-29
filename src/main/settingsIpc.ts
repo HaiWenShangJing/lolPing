@@ -13,7 +13,9 @@ import { askKeyClashes, panelKeyClashes, patchClashes, rendererPatch } from '../
 import { AGENT_PRESETS } from '../shared/teammate/agents';
 import { CONNECT_APPS, connectSnippet, mcpAddLine, type BridgeCommand } from '../shared/teammate/connectApps';
 import { MEMORY_MAX_ITEMS } from '../shared/teammate/memory';
-import { FALLBACK_HOST_MODELS, type HostModel } from '../shared/teammate/petHost';
+import { FALLBACK_HOST_MODELS, type HostModelList } from '../shared/teammate/petHost';
+import { isPetId, type PetId } from '../shared/teammate/pet';
+import type { PetNote } from '../shared/teammate/petMind';
 import { needsKey } from '../shared/teammate/providers';
 import { isBuiltin, PATH_MAX, type AgentProfile, type BuiltinProfile } from '../shared/teammate/settings';
 import type { UpdateState } from '../shared/update';
@@ -75,8 +77,16 @@ export interface SettingsIpcDeps {
     openScreenRecording(): void;
     /** Runs the agent's command with --version. */
     checkAgent(p: AgentProfile): Promise<CheckAgentResult>;
-    /** The models Copilot CLI offers, asked for with the first Copilot profile; rejects when it can't be asked. */
-    hostModels(): Promise<HostModel[]>;
+    /**
+     * The models Copilot CLI offers, as it names them with their price. `live` asks it now (a process start, so slow);
+     * otherwise what it said last time. Never rejects; an empty list means nothing is known yet.
+     */
+    hostModels(live: boolean, force: boolean): Promise<HostModelList>;
+    /** What a pet remembers, oldest first. */
+    petNotes(id: PetId): PetNote[];
+    /** The user makes a pet forget note `number` (counted from 1) or, with null, all of them; what it remembers now. */
+    forgetPetNote(id: PetId, number: number | null): PetNote[];
+    openPetLounge(): void;
     /** The system folder picker over the settings window; null when cancelled. */
     pickFolder(): Promise<string | null>;
     /** The JSON to paste into an agent's own MCP file; null when the pipe name can't be worked out. */
@@ -300,9 +310,19 @@ function registerTeammateIpc(d: SettingsIpcDeps): void {
     if (!profile) return { ok: false, reason: 'failed', detail: d.text().teammate.settings.checkNoProfile };
     return d.teammate.checkAgent(profile).catch((): CheckAgentResult => ({ ok: false, reason: 'failed', detail: '' }));
   });
-  ipcMain.handle(SETTINGS_CH.teammateHostModels, (): Promise<HostModel[]> => (
-    d.teammate.hostModels().then((m) => (m.length > 0 ? m : [...FALLBACK_HOST_MODELS])).catch(() => [...FALLBACK_HOST_MODELS])
-  ));
+  ipcMain.handle(SETTINGS_CH.teammateHostModels, async (_e, live: unknown, force: unknown): Promise<HostModelList> => {
+    const list = await d.teammate.hostModels(live === true, force === true).catch((e: unknown): HostModelList => ({
+      models: [], source: 'fallback', error: (e instanceof Error ? e.message : String(e)).slice(0, 200),
+    }));
+    return list.models.length > 0 ? list : { ...list, models: [...FALLBACK_HOST_MODELS], source: 'fallback' };
+  });
+  ipcMain.handle(SETTINGS_CH.teammatePetNotes, (_e, id: unknown): PetNote[] => (isPetId(id) ? d.teammate.petNotes(id) : []));
+  ipcMain.handle(SETTINGS_CH.teammateForgetPetNote, (_e, id: unknown, number: unknown): PetNote[] => {
+    if (!isPetId(id)) return [];
+    if (number !== null && (typeof number !== 'number' || !Number.isInteger(number))) return d.teammate.petNotes(id);
+    return d.teammate.forgetPetNote(id, number);
+  });
+  ipcMain.handle(SETTINGS_CH.teammateOpenLounge, () => d.teammate.openPetLounge());
   ipcMain.handle(SETTINGS_CH.teammatePickFolder, async (): Promise<string | null> => {
     const picked: unknown = await d.teammate.pickFolder().catch(() => null);
     return typeof picked === 'string' && picked !== '' && picked.length <= PATH_MAX ? picked : null;

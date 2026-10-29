@@ -90,6 +90,21 @@ describe('parsePetCall', () => {
     expect(parsePetCall('pet_play', { animation: 'x'.repeat(33) })).toBeNull();
   });
 
+  it('reads who a line is for, a pet or everyone, and leaves it out otherwise', () => {
+    expect(parsePetCall('pet_say', { text: 'hey', to: 'airi' })).toEqual({ kind: 'say', pet: null, text: 'hey', mood: null, to: 'airi' });
+    expect(parsePetCall('pet_say', { text: 'hey', to: 'all' })).toMatchObject({ to: 'all' });
+    expect(parsePetCall('pet_say', { text: 'hey', to: 'dog' })).toEqual({ kind: 'say', pet: null, text: 'hey', mood: null });
+    expect(parsePetCall('pet_say', { text: 'hey', to: 5 })).not.toHaveProperty('to');
+  });
+
+  it('reads a walk to stand beside another pet, but not beside itself', () => {
+    expect(parsePetCall('pet_walk', { beside: 'airi', pet: 'naiwa' })).toEqual({ kind: 'walk', pet: 'naiwa', to: { beside: 'airi' } });
+    expect(parsePetCall('pet_walk', { beside: 'naiwa', pet: 'naiwa' })).toBeNull();
+    expect(parsePetCall('pet_walk', { beside: 'dog' })).toBeNull();
+    expect(parsePetCall('pet_walk', { beside: 'airi', x: 10, y: 20 })).toEqual({ kind: 'walk', pet: null, to: { xPct: 10, yPct: 20 } });
+    expect(parsePetCall('pet_walk', { beside: 'airi', to: 'left' })).toEqual({ kind: 'walk', pet: null, to: { beside: 'airi' } });
+  });
+
   it('refuses a name that is not a pet tool', () => {
     expect(parsePetCall('say', { text: 'hi' })).toBeNull();
   });
@@ -156,6 +171,37 @@ describe('walkSpot', () => {
     expect(b.x - a.x).toBe(size.width + 8);
     expect(c.x - b.x).toBe(size.width + 8);
     expect(a.y).toBe(b.y);
+  });
+
+  describe('beside another pet', () => {
+    const other = { x: 800, y: 500, width: 160, height: 240 };
+    const beside = (r: typeof other | null) => ({ beside: () => r });
+
+    it('stands to the right of it, on the same ground', () => {
+      const at = spot({ beside: 'airi' }, 0, 1, beside(other));
+      expect(at.x).toBeGreaterThanOrEqual(other.x + other.width);
+      expect(at.x).toBeLessThan(other.x + other.width + 40);
+      expect(at.y + size.height).toBe(other.y + other.height);
+    });
+
+    it('stands to its left when there is no room on the right', () => {
+      const edge = { ...other, x: 1920 - 160 };
+      const at = spot({ beside: 'airi' }, 0, 1, beside(edge));
+      expect(at.x + size.width).toBeLessThanOrEqual(edge.x);
+      expect(at.x).toBeGreaterThan(edge.x - size.width - 40);
+    });
+
+    it('goes home when the other pet is not there', () => {
+      expect(spot({ beside: 'airi' }, 0, 1, beside(null))).toEqual({ x: 1700, y: 700 });
+      expect(spot({ beside: 'airi' })).toEqual({ x: 1700, y: 700 });
+    });
+
+    it('stays on the display', () => {
+      const low = { x: 800, y: 1000, width: 160, height: 100 };
+      const at = spot({ beside: 'airi' }, 0, 1, beside(low));
+      expect(at.y + size.height).toBeLessThanOrEqual(area.height);
+      expect(at.y).toBeGreaterThanOrEqual(0);
+    });
   });
 });
 
