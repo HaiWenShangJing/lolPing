@@ -152,6 +152,25 @@ describe('PetRoam schedule', () => {
     expect(h.pending()).toEqual([]);
   });
 
+  it('stays off while the pets are hosted by an agent that stays on', () => {
+    const h = harness();
+    h.settings.teammate.petRoamKind = 'host';
+    h.turnOn();
+    expect(h.pending()).toEqual([]);
+    expect(h.started).toEqual([]);
+  });
+
+  it('stops a visit schedule when the user switches to hosting, and lets the visit in progress go unheard', async () => {
+    const h = harness();
+    h.turnOn();
+    const run = await h.visit(1);
+    h.settings.teammate.petRoamKind = 'host';
+    h.roam.sync();
+    expect(h.pending()).toEqual([]);
+    expect((await h.roam.call(run.token, 'pet_say', { text: 'hi' })).isError).toBe(true);
+    expect(h.said()).toEqual([]);
+  });
+
   it('follows a change of the gap', () => {
     const h = harness();
     h.turnOn();

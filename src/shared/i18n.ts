@@ -152,6 +152,16 @@ interface MateAskText {
   };
   /** The pets' line when roaming is on but there is no agent profile to start. */
   roamNoAgent: string;
+  /** The same for hosting, where the agent stays on. */
+  hostNoAgent: string;
+  /** A wake-up in which the agent did nothing with the pets. */
+  hostSilent: (name: string) => string;
+  /** Said once hosting has failed several times in a row and waits to be turned off and on. */
+  hostGaveUp: string;
+  /** A double tap on a pet while no host is on to answer. */
+  chatOff: string;
+  /** The hint in the box a double tap on a pet opens. */
+  chatHint: string;
   /** A spot refused while the ask key is held: a fifth one, or one on another display than the first. */
   spotsFull: string;
   spotsDisplay: string;
@@ -206,6 +216,11 @@ const enMateAsk: MateAskText = {
     noFolder: (name) => `The folder ${name} isn’t there any more.`,
   },
   roamNoAgent: 'To wander on my own I need a coding agent. Add one in Settings → Teammate.',
+  hostNoAgent: 'To be hosted I need Copilot CLI. Add it as an agent in Settings → Teammate.',
+  hostSilent: (name) => `${name} woke up but didn’t do anything with the pets.`,
+  hostGaveUp: 'Hosting keeps failing, so I’m stopping. Turn it off and on in Settings → Pets to try again.',
+  chatOff: 'To chat with me, turn on “AI roams the pets” and choose Copilot CLI hosting in Settings → Pets.',
+  chatHint: 'Say something… (Enter to send)',
   spotsFull: 'Up to 4 spots per ask',
   spotsDisplay: 'Spots in one ask stay on one screen',
   spots: (n) => `${n} spots`,
@@ -402,7 +417,16 @@ const enMateSettings = {
   petAgents: 'Let agents drive the pets',
   petAgentsDesc: 'A coding agent connected through lolPing\'s MCP server (Claude Code, Copilot CLI and others) can make the pets say a line, run somewhere on your screen and play animations. Nothing is sent anywhere, and your own pings come first. Restart the agent after turning this on, so it sees the new tools.',
   petRoam: 'Let the AI roam the pets on its own',
-  petRoamDesc: 'Now and then lolPing starts your coding agent in the background (the default profile if it is an agent, else the first agent profile in Teammate) and lets it make the pets say something, walk around or play an animation. It is sent the time of day and nothing from your screen or files. Each visit costs a little of that agent\'s own quota, and your own pings come first. Needs the AI teammate on.',
+  petRoamDesc: 'Lets your coding agent make the pets say something, walk around or play an animation without being asked, and talk to you when you double-click one. It is told the time of day, how long you have been away from the keyboard and where the pets are, and nothing from your screen or files. It uses that agent\'s own quota, and your own pings come first. Needs the AI teammate on.',
+  petRoamKind: 'How',
+  petRoamKindDesc: 'A visit starts the agent fresh now and then: cheap, but it forgets everything in between. Keeping Copilot CLI on holds one session open that remembers what the pets did, decides for itself when to act next and answers when you double-click a pet and type to it. It needs a Copilot CLI agent in Teammate.',
+  petRoamKindOption: { visit: 'Visit now and then', host: 'Keep Copilot CLI on' },
+  petHostModel: 'Model',
+  petHostModelDesc: 'The model that runs the pets. Every wake-up is one request at the model\'s price multiplier (shown by its name), so a cheap one such as Claude Haiku keeps the cost down. Changing it starts a new session.',
+  petHostModelDefault: 'Copilot default',
+  petHostActivity: 'Activity',
+  petHostActivityDesc: 'How often it wakes up. It sleeps while you have been away from the keyboard for 10 minutes or more.',
+  petHostActivityOption: { calm: 'Calm (about every 6 min)', normal: 'Normal (about every 2½ min)', lively: 'Lively (about every minute)' },
   petRoamEvery: 'How often',
   petRoamEveryDesc: 'The gap between visits, give or take a fifth. The first one comes a few seconds after you turn this on.',
   petRoamEveryOption: (min: number) => `Every ${min} min`,
@@ -1297,6 +1321,11 @@ const zh: Strings = {
         addLolPing: (where) => (where === null ? '请检查它的 MCP 设置里是否加了 lolPing。' : `请检查 ${where} 里是否加了 lolPing。`),
       },
       roamNoAgent: '要自己溜达，我需要一个编程代理。请在“设置 → 队友”里添加一个。',
+      hostNoAgent: '要被托管，我需要 Copilot CLI。请在“设置 → 队友”里把它添加为代理。',
+      hostSilent: (name) => `${name} 醒了，但没有对桌宠做任何事。`,
+      hostGaveUp: '托管一直失败，我先停下了。在“设置 → 桌宠”里关掉再打开就能重试。',
+      chatOff: '想和我聊天，请在“设置 → 桌宠”里打开“让 AI 带桌宠溜达”，并选择 Copilot CLI 托管。',
+      chatHint: '说点什么…（回车发送）',
       spotsFull: '一次最多 4 处',
       spotsDisplay: '一次提问的几处要在同一块屏幕上',
       spots: (n) => `${n} 处`,
@@ -1488,7 +1517,16 @@ const zh: Strings = {
       petAgents: '允许代理驱动桌宠',
       petAgentsDesc: '通过 lolPing 的 MCP 服务连接的编程代理（Claude Code、Copilot CLI 等）可以让桌宠说话、在屏幕上跑到指定位置并做动作。不会向外发送任何内容，你自己的信号永远优先。开启后请重启代理，它才能看到新工具。',
       petRoam: '让 AI 自己带桌宠溜达',
-      petRoamDesc: '每隔一段时间，lolPing 会在后台启动你的编程代理（默认配置是代理就用它，否则用“队友”里的第一个代理配置），让它让桌宠说句话、四处走走或做个动作。发给它的只有当前的时间段，不含屏幕或文件内容。每次会消耗一点该代理自己的额度，你自己的信号永远优先。需要先开启 AI 队友。',
+      petRoamDesc: '让你的编程代理自己决定让桌宠说话、四处走走或做动作，双击桌宠还能和它聊天。发给它的只有当前时间、你离开键盘多久和桌宠的位置，不含屏幕或文件内容。用的是该代理自己的额度，你自己的信号永远优先。需要先开启 AI 队友。',
+      petRoamKind: '方式',
+      petRoamKindDesc: '“隔一会儿来一次”每次重新启动代理：省钱，但中间什么都不记得。“让 Copilot CLI 一直托管”则保持一个会话常开：它记得桌宠做过什么，自己决定下次什么时候行动，双击桌宠打字时还会回话。需要在“队友”里有一个 Copilot CLI 代理。',
+      petRoamKindOption: { visit: '隔一会儿来一次', host: '让 Copilot CLI 一直托管' },
+      petHostModel: '模型',
+      petHostModelDesc: '驱动桌宠的模型。每次唤醒是一次请求，按该模型的价格倍率计费（名字旁边有标注），所以用 Claude Haiku 这类便宜的模型能省不少。更换后会新开一个会话。',
+      petHostModelDefault: 'Copilot 默认',
+      petHostActivity: '活跃度',
+      petHostActivityDesc: '多久醒一次。你离开键盘 10 分钟以上时它会休眠。',
+      petHostActivityOption: { calm: '安静（约每 6 分钟）', normal: '一般（约每 2.5 分钟）', lively: '活泼（约每 1 分钟）' },
       petRoamEvery: '频率',
       petRoamEveryDesc: '两次之间的间隔，上下浮动五分之一。开启后几秒内会先来一次。',
       petRoamEveryOption: (min: number) => `每 ${min} 分钟`,

@@ -65,9 +65,13 @@ import { installedEditors } from './teammate/editors';
 import { fetchWebPdf, pdfAssetDirs, readDocument, readPdfBuffer } from './teammate/files';
 import { HistoryStore } from './teammate/historyStore';
 import { MateWindows, overShownWindow } from './teammate/mateWindows';
+import { openAcp } from './teammate/acp/process';
+import { listHostModels, startAcpSession } from './teammate/acp/session';
+import { PetHost } from './teammate/petHost';
 import { PetRoam } from './teammate/petRoam';
 import { PetWindows } from './teammate/petWindows';
 import { DEFAULT_PETS } from '../shared/teammate/pet';
+import { pickHostAgent, type HostModel } from '../shared/teammate/petHost';
 import { createAdapter } from './teammate/providers';
 import { SecretStore } from './teammate/secrets';
 import { StaleWatcher } from './teammate/staleWatcher';
@@ -156,6 +160,8 @@ interface Mate {
   agents: AgentRunner;
   /** Starts the user's agent now and then to do something with the pets, when they let it. */
   roam: PetRoam;
+  /** Keeps the user's Copilot CLI on to run the pets, when they let it. */
+  host: PetHost;
   /** lolPing's end of the MCP bridge once it listens; null when it couldn't, and then agent asks ask for a restart. */
   mcp: Promise<BridgeServer | null>;
 }
@@ -870,6 +876,34 @@ function start(): void {
     else if (action.t === 'history') void openHistory();
     else m.controller.onTeammateAction(view, action);
   };
+  /** Starts the agent that hosts the pets (or lists its models) over the Agent Client Protocol, with a session in it. */
+  const afterMs = (ms: number, fn: () => void): (() => void) => {
+    const timer = setTimeout(fn, ms);
+    return () => clearTimeout(timer);
+  };
+  const acpSession = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): ReturnType<typeof startAcpSession> => (
+    startAcpSession({
+      open: (c, a, d, e) => openAcp({ spawn, platform: PLATFORM, killTree: killProcessTree(PLATFORM) }, c, a, d, e),
+      after: afterMs, command, args, cwd, env, version: app.getVersion(),
+    })
+  );
+  /** The models Copilot CLI offers, asked for now and then: it is a process start. */
+  let hostModels: { at: number; command: string; models: HostModel[] } | null = null;
+  const MODELS_CACHE_MS = 10 * 60_000;
+  const askHostModels = async (): Promise<HostModel[]> => {
+    const t = settings.teammate;
+    const profile = pickHostAgent(t.profiles, t.defaultProfile);
+    if (!profile) throw new Error('no Copilot profile');
+    if (hostModels && hostModels.command === profile.command && Date.now() - hostModels.at < MODELS_CACHE_MS) return hostModels.models;
+    const cwd = join(app.getPath('temp'), 'lolping-models');
+    await mkdir(cwd, { recursive: true });
+    const models = await listHostModels({
+      open: (c, a, d, e) => openAcp({ spawn, platform: PLATFORM, killTree: killProcessTree(PLATFORM) }, c, a, d, e),
+      after: afterMs, command: profile.command, cwd, env: await userEnv(), version: app.getVersion(),
+    });
+    if (models.length > 0) hostModels = { at: Date.now(), command: profile.command, models };
+    return models;
+  };
   /** Screen captures live here only during an ask; anything left from a crash or a late write goes at start and stop. */
   const mateTempDir = (): string => join(app.getPath('temp'), 'lolping-teammate');
   const createMate = (): Mate => {
@@ -999,11 +1033,42 @@ function start(): void {
       },
       random: Math.random,
     });
+    const host = new PetHost({
+      settings: () => settings,
+      enabled: () => enabled && mate !== null,
+      busy: () => controller.running,
+      lang: mateLang,
+      now: () => new Date(),
+      idleSeconds: () => powerMonitor.getSystemIdleTime(),
+      pet: pets,
+      start: acpSession,
+      bridge: agentBridge,
+      env: userEnv,
+      tempDir: () => tempDir,
+      files: {
+        makeDir: async (p) => {
+          await mkdir(p, { recursive: true });
+        },
+        writeFile: (p, text) => writeFile(p, text, 'utf8'),
+        removeDir: (p) => rm(p, { recursive: true, force: true }),
+      },
+      after: afterMs,
+      random: Math.random,
+    });
+    const words = () => strings(mateLang(), PLATFORM).teammate.ask;
+    pets.setChat({
+      on: () => host.active,
+      hint: () => words().chatHint,
+      off: () => words().chatOff,
+      send: (pet, text) => {
+        host.chat(pet, text);
+      },
+    });
     // The pipe may be taken, possibly by another user's process: then nothing of an agent's goes through it.
     const mcp = (async (): Promise<BridgeServer> => {
       const { path, privateDir } = bridgeLocation(PLATFORM, userData, userInfo().username);
       const server = new BridgeServer({
-        path, privateDir, tokenFile: join(userData, 'mcp-token'), handler: bridgeHandler(controller, roam),
+        path, privateDir, tokenFile: join(userData, 'mcp-token'), handler: bridgeHandler(controller, roam, host),
         random: randomBytes, writeToken: writeTokenFile,
       });
       await server.start();
@@ -1032,7 +1097,7 @@ function start(): void {
     controller.on('state', pushMateTray);
     windows.on('action', onMateAction);
     windows.on('dragged', (view: MateView) => controller.onDragged(view));
-    return { secrets, history, usage, context, windows, actions, controller, stale, agents, roam, mcp };
+    return { secrets, history, usage, context, windows, actions, controller, stale, agents, roam, host, mcp };
   };
   /** Takes the teammate down; settles once its context helper has exited and its usage is on disk. */
   const stopMate = (): Promise<unknown> => {
@@ -1042,6 +1107,8 @@ function start(): void {
     gesture.cancel(); // while `mate` is still set, so a read made for held spots stops too
     mate = null;
     m.roam.stop();
+    m.host.stop();
+    pets.setChat(null);
     m.controller.cancel('user');
     m.agents.killAll(); // also on quitting: no agent, nor anything it started, outlives lolPing
     m.controller.removeAllListeners();
@@ -1083,6 +1150,7 @@ function start(): void {
       });
     }
     mate?.roam.sync();
+    mate?.host.sync();
     pushMateTray();
   };
   /** Opens the words box at the last spot; the ask goes with every spot when the words are sent. */
@@ -1202,6 +1270,7 @@ function start(): void {
       openScreenRecording: () => {
         if (IS_MAC) void shell.openExternal(SCREEN_RECORDING_PANE);
       },
+      hostModels: askHostModels,
       checkAgent: async (p) => {
         const env = await userEnv();
         return checkAgent(p, {

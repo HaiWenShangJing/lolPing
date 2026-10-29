@@ -211,5 +211,12 @@ export function describePets(pets: readonly PetStatus[]): string {
   return `Desktop pets showing:\n${lines.join('\n')}\nMoods: ${MOODS.join(', ')}.`;
 }
 
+/** The pets in one line, without their animations: where each stands and whether it is away from home. */
+export function describePetsBrief(pets: readonly PetStatus[]): string {
+  if (pets.length === 0) return NO_PETS;
+  const each = pets.map((p) => `${p.id} (x ${p.xPct}%, y ${p.yPct}%, ${p.away ? 'away from home' : 'at home'})`);
+  return `Pets showing: ${each.join('; ')}.`;
+}
+
 export const NO_PETS = 'No desktop pet is showing. The user can turn one on in lolPing\'s Desktop pets settings.';
 export const PETS_BUSY = 'The pets are busy with the user\'s own ping; try again in a moment.';

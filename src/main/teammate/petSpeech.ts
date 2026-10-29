@@ -5,7 +5,7 @@ import { SPEECH_SIZE, speechAt } from '../../shared/teammate/petControl';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-/** The bubble's page: the line and who says it are set by `say`, as text, so nothing an agent sends is read as markup. */
+/** The bubble's page: the line and who says it are set by `say`, as text, so nothing an agent sends is read as markup. The line is typed out, then stays. */
 const PAGE = `<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:transparent;overflow:hidden;font:14px/1.4 'Segoe UI','Microsoft YaHei',system-ui,sans-serif}
 body{display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;box-sizing:border-box}
@@ -16,7 +16,12 @@ border-right:1px solid rgba(0,0,0,.14);border-bottom:1px solid rgba(0,0,0,.14);t
 #f{font-size:11px;opacity:.6;margin-bottom:2px}
 #t{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 </style><div class="b"><div id="f"></div><div id="t"></div></div>
-<script>window.say=(t,f)=>{document.getElementById('t').textContent=t;const e=document.getElementById('f');e.textContent=f;e.hidden=!f}</script>`;
+<script>let tw=0;window.say=(t,f,ms)=>{clearInterval(tw);const e=document.getElementById('t'),h=document.getElementById('f');
+h.textContent=f;h.hidden=!f;const c=Array.from(t),a=document.createElement('span'),r=document.createElement('span');
+r.style.visibility='hidden';e.textContent='';e.append(a,r);r.textContent=t;if(!ms||c.length<2)return;
+const step=Math.min(c.length*45,ms*.5)/c.length,per=Math.max(1,Math.ceil(16/step));let i=0;
+tw=setInterval(()=>{i=Math.min(c.length,i+per);a.textContent=c.slice(0,i).join('');r.textContent=c.slice(i).join('');
+if(i>=c.length)clearInterval(tw)},Math.max(16,step*per))}</script>`;
 const PAGE_URL = `data:text/html;charset=utf-8,${encodeURIComponent(PAGE)}`;
 
 interface Bubble {
@@ -46,7 +51,7 @@ export class PetSpeech {
     const open = bubble;
     open.timer = setTimeout(() => this.hide(id), ms);
     this.place(open.win, pet);
-    const line = `window.say(${JSON.stringify(text)}, ${JSON.stringify(from)})`;
+    const line = `window.say(${JSON.stringify(text)}, ${JSON.stringify(from)}, ${Math.round(ms)})`;
     open.ready = open.ready
       .then(() => (open.win.isDestroyed() ? undefined : open.win.webContents.executeJavaScript(line)))
       .then(() => {

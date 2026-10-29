@@ -7,6 +7,7 @@ import { AGENT_PRESET_IDS, type AgentPresetId } from './agents';
 import { agentAllowed, allowed, parsePermissionKey } from './doRules';
 import { DEFAULT_PETS, normalizePets, type PetsSetting } from './pet';
 import { ROAM_DEFAULT_MINUTES, roamMinutes } from './petRoam';
+import { DEFAULT_HOST_ACTIVITY, DEFAULT_ROAM_KIND, hostActivity, hostModel, roamKind, type HostActivity, type RoamKind } from './petHost';
 import { PROVIDER_IDS, type ProviderId } from './providers';
 
 /** The ask key: a trigger key of its own, or the ping key ('same'). */
@@ -89,6 +90,12 @@ export interface TeammateSettings {
   petRoam: boolean;
   /** Minutes between those visits, give or take a fifth. */
   petRoamMin: number;
+  /** 'visit': a fresh agent run each time; 'host': Copilot CLI stays on as a session and decides what the pets do and when. */
+  petRoamKind: RoamKind;
+  /** The model the host session uses; null leaves it to Copilot CLI. */
+  petHostModel: string | null;
+  /** How often the host wakes, at most and at least: its own pick is kept inside the range of this. */
+  petHostActivity: HostActivity;
   /** The teammate may save short notes about the user and reads them back in later asks. Off until the user turns it on. */
   memory: boolean;
   /** keepDays null keeps threads until the thread cap removes them. */
@@ -122,6 +129,9 @@ export const DEFAULT_TEAMMATE: TeammateSettings = {
   agentsCanDrivePets: false,
   petRoam: false,
   petRoamMin: ROAM_DEFAULT_MINUTES,
+  petRoamKind: DEFAULT_ROAM_KIND,
+  petHostModel: null,
+  petHostActivity: DEFAULT_HOST_ACTIVITY,
   memory: false,
   history: { on: true, keepDays: 30, maxThreads: 500, paused: false },
   permissions: [],
@@ -335,6 +345,9 @@ export function normalizeTeammate(
     agentsCanDrivePets: bool(r.agentsCanDrivePets, DEFAULT_TEAMMATE.agentsCanDrivePets),
     petRoam: bool(r.petRoam, DEFAULT_TEAMMATE.petRoam),
     petRoamMin: roamMinutes(r.petRoamMin),
+    petRoamKind: roamKind(r.petRoamKind),
+    petHostModel: hostModel(r.petHostModel),
+    petHostActivity: hostActivity(r.petHostActivity),
     memory: bool(r.memory, DEFAULT_TEAMMATE.memory),
     history: history(r.history),
     permissions: [...new Set(permissions)].slice(0, MAX_PERMISSIONS),

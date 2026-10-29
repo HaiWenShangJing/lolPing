@@ -14,6 +14,8 @@ import {
   NO_PETS, PETS_BUSY, describePets, speechMs, walkSpot, type PetCommand, type PetDriveResult, type PetStatus, type PetTarget,
 } from '../../shared/teammate/petControl';
 import { PetSpeech } from './petSpeech';
+import { PetChat } from './petChat';
+import { DOUBLE_TAP_MS, isTap } from '../../shared/teammate/petHost';
 
 type Point = { x: number; y: number };
 
@@ -59,8 +61,10 @@ interface Pet {
   rest: string;
   /** The facing the page was last told. */
   sentFlip: boolean;
-  /** Pointer and window position when a drag began; null when none is on. */
-  drag: { pointer: Point; from: Point } | null;
+  /** Pointer and window position when a drag began, and when (ms since the epoch); null when none is on. */
+  drag: { pointer: Point; from: Point; at: number } | null;
+  /** When the pet was last tapped (pressed and let go without moving), to tell a double tap; 0 when not lately. */
+  clickAt: number;
   /** What it does at home when idle: its next little show, or the one it is playing. */
   life: Life;
   /** Where a Live2D pet was last told to look. */
@@ -78,6 +82,17 @@ interface Pet {
   arrive: string | null;
 }
 
+/** What a double tap on a pet does: opens a box to type to it, which the host agent answers. */
+export interface PetChatHook {
+  /** True while a host is on to answer. */
+  on(): boolean;
+  /** The box's hint. */
+  hint(): string;
+  /** What the pet says when it can't answer. */
+  off(): string;
+  send(pet: PetId, text: string): void;
+}
+
 /**
  * The desktop pets: a small window each, standing at home on the desktop where the user can drag it. An ask sends them
  * to the ping; they think while the answer comes, cheer when it is in, and walk home when it is over. The art is a
@@ -91,6 +106,8 @@ export class PetWindows {
   private lookTimer: ReturnType<typeof setInterval> | null = null;
   private driveTimer: ReturnType<typeof setInterval> | null = null;
   private readonly speech = new PetSpeech();
+  private readonly chat = new PetChat((pet, text) => this.sendChat(pet, text));
+  private chatHook: PetChatHook | null = null;
   private lifeOn = true;
   private lastTick = 0;
   private setting: PetsSetting = DEFAULT_PETS;
@@ -274,6 +291,7 @@ export class PetWindows {
   setCaptureExcluded(on: boolean): void {
     this.captureExcluded = on;
     this.speech.setCaptureExcluded(on);
+    this.chat.setCaptureExcluded(on);
     for (const pet of this.pets.values()) if (!pet.win.isDestroyed()) pet.win.setContentProtection(on);
   }
 
@@ -355,6 +373,17 @@ export class PetWindows {
     this.startDriveTimer();
   }
 
+  /** The pets showing, where they are and what they can play: what the agent that hosts them is told. */
+  shown(): PetStatus[] {
+    return this.statuses();
+  }
+
+  /** Lets a double tap on a pet open a box to type to it; null takes that away. */
+  setChat(hook: PetChatHook | null): void {
+    this.chatHook = hook;
+    if (!hook) this.chat.close();
+  }
+
   private statuses(): PetStatus[] {
     const area = screen.getPrimaryDisplay().workArea;
     return PET_IDS.flatMap((id) => {
@@ -419,6 +448,7 @@ export class PetWindows {
     if (this.driveTimer !== null) clearInterval(this.driveTimer);
     this.driveTimer = null;
     this.speech.destroy();
+    this.chat.destroy();
     if (this.lifeTimer !== null) clearInterval(this.lifeTimer);
     this.lifeTimer = null;
     if (this.lookTimer !== null) clearInterval(this.lookTimer);
@@ -469,7 +499,7 @@ export class PetWindows {
       // A Live2D pet is as big as its window but not as its art: clicks pass through until the page says the pointer is on the character.
       if (manifest.live2d && !IS_LINUX) win.setIgnoreMouseEvents(true, { forward: true });
       const pet: Pet = {
-        id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null,
+        id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null, clickAt: 0,
         life: startLife(Date.now(), Math.random), gaze: null, interactive: false, hold: null, show: 0, arrive: null,
       };
       const init: PetInit = { id, base: `${APP_SCHEME}://pets/${id}`, manifest, rest };
@@ -603,7 +633,7 @@ export class PetWindows {
     const msg = parsePetDrag(raw);
     if (!pet || !msg) return;
     if (msg.phase === 'start') {
-      pet.drag = { pointer: { x: msg.x, y: msg.y }, from: { ...pet.at } };
+      pet.drag = { pointer: { x: msg.x, y: msg.y }, from: { ...pet.at }, at: Date.now() };
       pet.hold = null; // the user has taken it: no agent keeps it away, or walks it home from under the pointer
       pet.show = 0;
       pet.arrive = null;
@@ -619,11 +649,37 @@ export class PetWindows {
     pet.win.setBounds({ ...pet.at, width: pet.manifest.width, height: pet.manifest.height });
     this.speech.move(pet.id, pet.win.getBounds());
     if (msg.phase === 'end') {
+      const tapped = isTap(msg.x - drag.pointer.x, msg.y - drag.pointer.y, Date.now() - drag.at);
       pet.drag = null;
       // Where it was put down is home; an ask that comes later sends it from there.
       pet.home = { ...pet.at };
       pet.where = 'home';
       this.setPose(pet, 'idle');
+      if (tapped) this.tapped(pet);
     }
   };
+
+  /** A tap, and a second one soon after, is a double tap: the box to type to the pet opens. */
+  private tapped(pet: Pet): void {
+    const now = Date.now();
+    if (pet.clickAt === 0 || now - pet.clickAt > DOUBLE_TAP_MS) {
+      pet.clickAt = now;
+      return;
+    }
+    pet.clickAt = 0;
+    const hook = this.chatHook;
+    if (!hook || this.ping !== null) return;
+    if (!hook.on()) {
+      this.driveSay(pet, hook.off(), null, 'lolPing');
+      return;
+    }
+    this.chat.open(pet.id, pet.win.getBounds(), hook.hint());
+  }
+
+  /** The user sent a line to a pet: the host answers it, and the pet thinks meanwhile. */
+  private sendChat(id: PetId, text: string): void {
+    this.chatHook?.send(id, text);
+    const pet = this.pets.get(id);
+    if (pet && 'think' in pet.manifest.anims && !pet.drag) this.drivePlay([pet], 'think', null);
+  }
 }

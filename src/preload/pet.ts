@@ -25,6 +25,8 @@ const api: PetApi = {
   },
   drag: (msg: PetDragMsg) => ipcRenderer.send('pet:drag', msg),
   hit: (msg: PetHitMsg) => ipcRenderer.send('pet:hit', msg),
+  chat: (text: string) => ipcRenderer.send('pet:chat', text),
+  closeChat: () => ipcRenderer.send('pet:chatClose'),
 };
 
 contextBridge.exposeInMainWorld('petApi', api);

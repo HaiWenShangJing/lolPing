@@ -13,6 +13,7 @@ import { askKeyClashes, panelKeyClashes, patchClashes, rendererPatch } from '../
 import { AGENT_PRESETS } from '../shared/teammate/agents';
 import { CONNECT_APPS, connectSnippet, mcpAddLine, type BridgeCommand } from '../shared/teammate/connectApps';
 import { MEMORY_MAX_ITEMS } from '../shared/teammate/memory';
+import { FALLBACK_HOST_MODELS, type HostModel } from '../shared/teammate/petHost';
 import { needsKey } from '../shared/teammate/providers';
 import { isBuiltin, PATH_MAX, type AgentProfile, type BuiltinProfile } from '../shared/teammate/settings';
 import type { UpdateState } from '../shared/update';
@@ -74,6 +75,8 @@ export interface SettingsIpcDeps {
     openScreenRecording(): void;
     /** Runs the agent's command with --version. */
     checkAgent(p: AgentProfile): Promise<CheckAgentResult>;
+    /** The models Copilot CLI offers, asked for with the first Copilot profile; rejects when it can't be asked. */
+    hostModels(): Promise<HostModel[]>;
     /** The system folder picker over the settings window; null when cancelled. */
     pickFolder(): Promise<string | null>;
     /** The JSON to paste into an agent's own MCP file; null when the pipe name can't be worked out. */
@@ -297,6 +300,9 @@ function registerTeammateIpc(d: SettingsIpcDeps): void {
     if (!profile) return { ok: false, reason: 'failed', detail: d.text().teammate.settings.checkNoProfile };
     return d.teammate.checkAgent(profile).catch((): CheckAgentResult => ({ ok: false, reason: 'failed', detail: '' }));
   });
+  ipcMain.handle(SETTINGS_CH.teammateHostModels, (): Promise<HostModel[]> => (
+    d.teammate.hostModels().then((m) => (m.length > 0 ? m : [...FALLBACK_HOST_MODELS])).catch(() => [...FALLBACK_HOST_MODELS])
+  ));
   ipcMain.handle(SETTINGS_CH.teammatePickFolder, async (): Promise<string | null> => {
     const picked: unknown = await d.teammate.pickFolder().catch(() => null);
     return typeof picked === 'string' && picked !== '' && picked.length <= PATH_MAX ? picked : null;

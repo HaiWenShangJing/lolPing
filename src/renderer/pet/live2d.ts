@@ -1,4 +1,4 @@
-import type { PetApi, PetInit, PetLookMsg, PetPoseMsg, PetTalkMsg } from '../../shared/petIpc';
+import { isTap, type PetApi, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg } from '../../shared/petIpc';
 import {
   blinkFactor, faceOf, gestureAt, mouthAt, nextBlink, performanceFor, pickPoke, POKE_MS, stepBlend, walkAt, type Blend, type Param,
 } from '../../shared/teammate/live2d';
@@ -101,7 +101,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
   let lastFrame = performance.now();
   let blinkAt = nextBlink(lastFrame, Math.random);
   let blinkStart = -1000;
-  let down: { id: number; x: number; y: number; dragging: boolean } | null = null;
+  let down: { id: number; x: number; y: number; at: number; dragging: boolean } | null = null;
   let probe: { x: number; y: number } | null = null;
   let over = false;
 
@@ -175,7 +175,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     canvas.setPointerCapture(e.pointerId);
-    down = { id: e.pointerId, x: e.screenX, y: e.screenY, dragging: false };
+    down = { id: e.pointerId, x: e.screenX, y: e.screenY, at: performance.now(), dragging: false };
   });
   window.addEventListener('pointermove', (e) => {
     if (down && down.id === e.pointerId) {
@@ -195,7 +195,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
   });
   const release = (e: PointerEvent, cancelled: boolean): void => {
     if (!down || down.id !== e.pointerId) return;
-    const { dragging } = down;
+    const { dragging, x, y, at } = down;
     down = null;
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     if (dragging) {
@@ -205,6 +205,11 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
       lastPoke = pickPoke(lastPoke, Math.random);
       pokeAnim = lastPoke;
       pokeUntil = performance.now() + POKE_MS;
+      // A drag only starts once the pointer has moved, so a tap is told to the main process as a press and release in one place.
+      if (isTap(e.screenX - x, e.screenY - y, performance.now() - at)) {
+        api.drag({ phase: 'start', x, y });
+        api.drag({ phase: 'end', x: e.screenX, y: e.screenY });
+      }
     }
     probe = { x: e.clientX, y: e.clientY };
   };

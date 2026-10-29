@@ -1,8 +1,9 @@
 import type { PetId, PetManifest } from './teammate/pet';
 
-/** init, pose, look and talk: main → page. drag and hit: page → main. */
+/** init, pose, look and talk: main → page. drag, hit, chat and chatClose: page → main. */
 export const PET_CH = {
   init: 'pet:init', pose: 'pet:pose', drag: 'pet:drag', look: 'pet:look', talk: 'pet:talk', hit: 'pet:hit',
+  chat: 'pet:chat', chatClose: 'pet:chatClose',
 } as const;
 
 /** What a pet window needs to draw: `base` is the URL its frame names are under. */
@@ -50,9 +51,32 @@ export interface PetApi {
   onTalk(cb: (msg: PetTalkMsg) => void): () => void;
   drag(msg: PetDragMsg): void;
   hit(msg: PetHitMsg): void;
+  /** The chat box's page: what the user typed to the pet. */
+  chat(text: string): void;
+  /** The chat box's page: the user dismissed it. */
+  closeChat(): void;
 }
 
+/** A tap is a press and release in about the same place, quickly; two taps close together make a double tap. */
+export const TAP_MAX_MS = 400;
+export const TAP_MAX_MOVE = 5;
+export const DOUBLE_TAP_MS = 500;
+
+export function isTap(dx: number, dy: number, ms: number): boolean {
+  return Math.hypot(dx, dy) <= TAP_MAX_MOVE && ms >= 0 && ms <= TAP_MAX_MS;
+}
+
+/** The longest line the user can type to a pet. */
+export const PET_CHAT_MAX = 200;
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** What the user typed in the chat box: trimmed and cut to length; null when there is nothing. */
+export function parsePetChat(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.replace(/\s+/g, ' ').trim().slice(0, PET_CHAT_MAX);
+  return text === '' ? null : text;
+}
 
 export function parsePetDrag(raw: unknown): PetDragMsg | null {
   if (typeof raw !== 'object' || raw === null) return null;

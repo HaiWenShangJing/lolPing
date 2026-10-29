@@ -86,7 +86,7 @@ export class PetRoam {
     const t = this.deps.settings().teammate;
     const first = !this.synced;
     this.synced = true;
-    if (!t.petRoam) {
+    if (!t.petRoam || t.petRoamKind !== 'visit') {
       this.stop();
       this.suspended = false;
       this.fails = 0;
@@ -118,13 +118,18 @@ export class PetRoam {
   async call(ask: string, name: string, args: unknown): Promise<Result> {
     const visit = this.visit;
     if (visit?.token !== ask || !isPetTool(name)) return { content: NOT_AVAILABLE, isError: true };
-    if (!this.deps.enabled() || !this.deps.settings().teammate.petRoam) return { content: PAUSED, isError: true };
+    if (!this.deps.enabled() || !this.visiting()) return { content: PAUSED, isError: true };
     if (visit.calls >= ROAM_CALLS_MAX) return { content: ENOUGH, isError: true };
     visit.calls += 1;
     const cmd = parsePetCall(name, args);
     if (!cmd) return { content: INVALID, isError: true };
     const done = this.deps.pet.drive(cmd, visit.from);
     return { content: [{ text: done.text }], isError: !done.ok };
+  }
+
+  private visiting(): boolean {
+    const t = this.deps.settings().teammate;
+    return t.petRoam && t.petRoamKind === 'visit';
   }
 
   private schedule(ms: number): void {
@@ -137,7 +142,7 @@ export class PetRoam {
 
   private async tick(): Promise<void> {
     const t = this.deps.settings().teammate;
-    if (!this.on || !t.petRoam) return;
+    if (!this.on || !this.visiting()) return;
     this.everyMin = t.petRoamMin;
     if (!this.deps.enabled() || this.deps.busy()) return this.schedule(RETRY_MS);
     try {

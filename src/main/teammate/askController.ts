@@ -356,22 +356,24 @@ const bridgeContent = (p: Part): BridgeContent => ('text' in p
 
 /**
  * lolPing's end of the bridge: an agent started for an ask lists and calls that ask's tools, an agent started for a pet
- * visit gets the pet tools, and any other client is an agent pinging the user unprompted. A connection's hello isn't a
- * receipt, since dsh opens a probe connection first.
+ * visit or hosting gets the pet tools, and any other client is an agent pinging the user unprompted. A connection's
+ * hello isn't a receipt, since dsh opens a probe connection first.
  */
 export function bridgeHandler(
   c: Pick<AskController, 'agentTools' | 'agentCall' | 'visitorTools' | 'visitorCall'>,
-  roam?: Pick<PetRoam, 'tools' | 'call'>,
+  ...pets: Pick<PetRoam, 'tools' | 'call'>[]
 ): BridgeHandler {
+  const owner = (ask: string): Pick<PetRoam, 'tools' | 'call'> | undefined => pets.find((p) => p.tools(ask));
   return {
     hello: () => undefined,
     list: (s) => {
       if (s.ask === null) return c.visitorTools();
-      return roam?.tools(s.ask) ?? c.agentTools(s.ask) ?? [];
+      return owner(s.ask)?.tools(s.ask) ?? c.agentTools(s.ask) ?? [];
     },
     call: async (s, name, args) => {
       if (s.ask === null) return c.visitorCall(s.client, name, args);
-      if (roam?.tools(s.ask)) return roam.call(s.ask, name, args);
+      const pet = owner(s.ask);
+      if (pet) return pet.call(s.ask, name, args);
       return c.agentCall(s.ask, name, args);
     },
   };

@@ -48,6 +48,7 @@ const api: SettingsApi = {
   hasTeammateKey: (profileId) => ipcRenderer.invoke(SETTINGS_CH.teammateHasKey, profileId),
   checkTeammateKey: (profileId) => ipcRenderer.invoke(SETTINGS_CH.teammateCheckKey, profileId),
   checkTeammateAgent: (profileId) => ipcRenderer.invoke(SETTINGS_CH.teammateCheckAgent, profileId),
+  listHostModels: () => ipcRenderer.invoke(SETTINGS_CH.teammateHostModels),
   pickTeammateFolder: () => ipcRenderer.invoke(SETTINGS_CH.teammatePickFolder),
   getTeammateAgentSnippet: (profileId) => ipcRenderer.invoke(SETTINGS_CH.teammateAgentSnippet, profileId),
   getTeammateConnectSnippet: (appId) => ipcRenderer.invoke(SETTINGS_CH.teammateConnectSnippet, appId),

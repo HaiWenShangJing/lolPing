@@ -9,6 +9,7 @@ import type { HistoryLine } from './roomHistory';
 import { PEER_RE } from './roomProtocol';
 import type { OverlaySettings, RoomTextStyle, Settings } from './settings';
 import type { Rect } from './teammate/coords';
+import type { HostModel } from './teammate/petHost';
 import type { UpdateState } from './update';
 import type { VoteView } from './voteTally';
 
@@ -308,6 +309,8 @@ export interface SettingsApi {
   checkTeammateKey(profileId: string): Promise<CheckKeyResult>;
   /** Runs an agent profile's command with --version. The main process looks the profile up; no command comes from here. */
   checkTeammateAgent(profileId: string): Promise<CheckAgentResult>;
+  /** The models Copilot CLI offers, as it names them with their price; a short built-in list when it can't be asked. */
+  listHostModels(): Promise<HostModel[]>;
   /** Shows the system folder picker; the chosen path, or null when it was cancelled. */
   pickTeammateFolder(): Promise<string | null>;
   /**

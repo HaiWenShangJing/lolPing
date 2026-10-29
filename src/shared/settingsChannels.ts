@@ -45,6 +45,7 @@ export const SETTINGS_CH = {
   teammateStatus: 'teammate:status',
   teammateOpenScreen: 'teammate:openScreen',
   teammateCheckAgent: 'teammate:checkAgent',
+  teammateHostModels: 'teammate:hostModels',
   teammatePickFolder: 'teammate:pickFolder',
   teammateAgentSnippet: 'teammate:agentSnippet',
   teammateConnectSnippet: 'teammate:connectSnippet',

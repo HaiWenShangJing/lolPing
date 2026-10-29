@@ -1,7 +1,23 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parsePetDrag, parsePetHit, PET_CH } from '../../src/shared/petIpc';
+import { parsePetChat, parsePetDrag, parsePetHit, PET_CH, PET_CHAT_MAX } from '../../src/shared/petIpc';
+
+describe('parsePetChat', () => {
+  it('reads a line the user typed, on one line and trimmed', () => {
+    expect(parsePetChat('  hello\n there  ')).toBe('hello there');
+  });
+
+  it('cuts a long line', () => {
+    expect(parsePetChat('a'.repeat(PET_CHAT_MAX + 50))).toHaveLength(PET_CHAT_MAX);
+  });
+
+  it('refuses what is not text or has no words', () => {
+    expect(parsePetChat(null)).toBeNull();
+    expect(parsePetChat({ text: 'hi' })).toBeNull();
+    expect(parsePetChat('   \n ')).toBeNull();
+  });
+});
 
 describe('parsePetDrag', () => {
   it('reads a phase and a position', () => {

@@ -214,6 +214,21 @@ describe('normalizeTeammate', () => {
     expect(normalizeTeammate({ petRoamMin: 'soon' }, win).petRoamMin).toBe(15);
   });
 
+  it('visits by default; a host keeps its model and activity, and anything unknown falls back', () => {
+    const old = normalizeTeammate({ tagName: 'Old' }, win);
+    expect(old.petRoamKind).toBe('visit');
+    expect(old.petHostModel).toBeNull();
+    expect(old.petHostActivity).toBe('normal');
+    const host = normalizeTeammate({ petRoamKind: 'host', petHostModel: 'claude-haiku-4.5', petHostActivity: 'lively' }, win);
+    expect(host.petRoamKind).toBe('host');
+    expect(host.petHostModel).toBe('claude-haiku-4.5');
+    expect(host.petHostActivity).toBe('lively');
+    const junk = normalizeTeammate({ petRoamKind: 'always', petHostModel: '--yolo now', petHostActivity: 'wild' }, win);
+    expect(junk.petRoamKind).toBe('visit');
+    expect(junk.petHostModel).toBeNull();
+    expect(junk.petHostActivity).toBe('normal');
+  });
+
   it('keeps agent permission keys but never one for a shell tool', () => {
     const t = normalizeTeammate({
       profiles: [validProfile, validAgent],
