@@ -15,6 +15,11 @@ export const LIFE_ANIMS: Record<PetId, readonly string[]> = {
   rice: L2D_LIFE,
   senko: L2D_LIFE,
   mark: L2D_LIFE,
+  laffey: L2D_LIFE,
+  unicorn: L2D_LIFE,
+  javelin: L2D_LIFE,
+  shoukaku: L2D_LIFE,
+  doubao: ['wave', 'dance', 'love', 'shy', 'nap', 'confused', 'nod'],
 };
 
 /** Milliseconds a pet rests between two of its little shows, and how long one lasts. */

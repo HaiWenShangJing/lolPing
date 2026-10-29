@@ -88,6 +88,9 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
 
   let commanded = init.rest;
   let flip = false;
+  /** The way the last fight cue faced; null when no cue is on. */
+  let fxDir: 1 | -1 | null = null;
+  let fxN = 0;
   let effective = '';
   let effectiveAt = 0;
   let reacting = false;
@@ -148,7 +151,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
     }
     const sway = effective === 'walk'
       ? walkAt(now - effectiveAt, flip ? -1 : 1)
-      : gestureAt(perf.gesture, now - effectiveAt);
+      : gestureAt(perf.gesture, now - effectiveAt, fxDir ?? 1);
     for (const [id, value] of Object.entries(sway.face) as [Param, number][]) core.addParameterValueById(id, value);
     const mouth = mouthAt(now - talkAt, talkFor);
     if (mouth) {
@@ -201,7 +204,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
     if (dragging) {
       canvas.classList.remove('dragging');
       api.drag({ phase: 'end', x: e.screenX, y: e.screenY });
-    } else if (!cancelled && commanded !== 'walk' && commanded !== 'held') {
+    } else if (!cancelled && commanded !== 'walk' && commanded !== 'held' && !commanded.startsWith('fight-')) {
       lastPoke = pickPoke(lastPoke, Math.random);
       pokeAnim = lastPoke;
       pokeUntil = performance.now() + POKE_MS;
@@ -227,6 +230,12 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
     pose: (msg) => {
       commanded = msg.anim;
       flip = msg.flip;
+      fxDir = msg.fx ? msg.fx.dir : null;
+      // A cue starts over each time it is told, even when it is the one that is playing (two jabs in a row).
+      if (msg.fx && msg.fx.n !== fxN) {
+        fxN = msg.fx.n;
+        effective = '';
+      }
     },
     look: ({ x, y }) => internal.focusController.focus(x, y),
     talk: ({ ms }) => {

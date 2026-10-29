@@ -1,0 +1,274 @@
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  pointer-events: none;
+  font-family: 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+#ring {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* The fighters' plates: a name over a health bar and a fury bar. */
+.plate {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 4px 8px 6px;
+  border-radius: 10px;
+  border-top: 3px solid var(--c);
+  background: rgba(16, 18, 26, 0.84);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transform: translateX(-50%);
+}
+
+.plate .name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--c);
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+
+.plate .combo {
+  color: #ffd23f;
+  font-style: italic;
+  opacity: 0;
+}
+
+.plate .combo.on {
+  animation: combo 1100ms ease-out;
+}
+
+.hp, .fury {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #272a35;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.hp {
+  height: 12px;
+  margin-top: 2px;
+}
+
+.fury {
+  height: 6px;
+  margin-top: 3px;
+}
+
+.hp i, .fury i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 6px;
+}
+
+/* The white trail behind a falling health bar, which catches up a moment later. */
+.hp .ghost {
+  background: #fff;
+  opacity: 0.85;
+  transition: width 620ms ease-out 280ms;
+}
+
+.hp .fill {
+  background: linear-gradient(#8cf08c, #2fbf4a);
+  transition: width 160ms ease-out;
+}
+
+.hp .fill.low {
+  background: linear-gradient(#ffe56f, #f5a524);
+}
+
+.hp .fill.critical {
+  background: linear-gradient(#ff9a90, #e53935);
+  animation: throb 480ms ease-in-out infinite alternate;
+}
+
+.fury i {
+  background: linear-gradient(90deg, #ffb13b, #ff5a1f);
+  transition: width 200ms ease-out;
+}
+
+.fury.full i {
+  background: linear-gradient(90deg, #fff176, #ff7043);
+  animation: glow 420ms ease-in-out infinite alternate;
+}
+
+/* A number or a word that floats up from where a blow landed. */
+.pop {
+  position: absolute;
+  font-family: 'Impact', 'Arial Black', 'Microsoft YaHei UI', sans-serif;
+  font-weight: 900;
+  white-space: nowrap;
+  -webkit-text-stroke: 3px #14161c;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  animation: pop 900ms ease-out forwards;
+}
+
+.pop.hit { font-size: 26px; color: #fff; }
+.pop.crit { font-size: 40px; color: #ffd23f; animation-duration: 1100ms; }
+.pop.block { font-size: 22px; color: #7fd0ff; }
+.pop.dodge { font-size: 22px; color: #b4f5d4; }
+
+/* The flash of a blow. */
+.spark {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  margin: -55px 0 0 -55px;
+  animation: spark 340ms ease-out forwards;
+}
+
+.spark.hit, .spark.crit, .spark.special {
+  background:
+    radial-gradient(circle, #fff 0 14%, rgba(255, 236, 130, 0.95) 15% 34%, rgba(255, 120, 30, 0.0) 62%);
+  clip-path: polygon(50% 0, 60% 28%, 90% 10%, 74% 38%, 100% 50%, 74% 62%, 90% 90%, 60% 72%, 50% 100%, 40% 72%, 10% 90%, 26% 62%, 0 50%, 26% 38%, 10% 10%, 40% 28%);
+}
+
+.spark.crit {
+  width: 160px;
+  height: 160px;
+  margin: -80px 0 0 -80px;
+  background: radial-gradient(circle, #fff 0 12%, #ffd23f 13% 32%, #ff3d00 33% 60%, rgba(255, 0, 0, 0) 66%);
+}
+
+.spark.special {
+  width: 230px;
+  height: 230px;
+  margin: -115px 0 0 -115px;
+  background: radial-gradient(circle, #fff 0 12%, #ff9de2 13% 30%, #7c4dff 31% 58%, rgba(124, 77, 255, 0) 66%);
+  animation-duration: 480ms;
+}
+
+.spark.block {
+  border: 5px solid #8fd8ff;
+  border-radius: 50%;
+  box-sizing: border-box;
+  box-shadow: 0 0 14px #8fd8ff, inset 0 0 12px rgba(143, 216, 255, 0.7);
+}
+
+/* The big word over the ring. */
+.banner {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  font-family: 'Impact', 'Arial Black', 'Microsoft YaHei UI', sans-serif;
+  font-weight: 900;
+  font-size: 64px;
+  letter-spacing: 2px;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
+  -webkit-text-stroke: 4px #14161c;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 0 26px var(--glow);
+  animation: banner var(--ms) cubic-bezier(0.2, 1.3, 0.4, 1) forwards;
+}
+
+.banner small {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+  letter-spacing: 1px;
+  -webkit-text-stroke-width: 3px;
+}
+
+.banner.fight { color: #ffd23f; --glow: #ff7a18; }
+.banner.ko { color: #ff4a4a; font-size: 92px; --glow: #ff0000; }
+.banner.win { color: #ffe16b; --glow: #ffb300; }
+.banner.draw { color: #dbe2ec; --glow: #8fa3bf; }
+
+/* Stars circling over a fighter who is out. */
+.stars {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.stars i {
+  position: absolute;
+  left: -9px;
+  top: -12px;
+  font-style: normal;
+  font-size: 18px;
+  color: #ffe34d;
+  text-shadow: 0 0 6px #ff9800, 0 1px 2px #000;
+  animation: orbit 1400ms linear infinite;
+}
+
+.stars i:nth-child(2) { animation-delay: -467ms; }
+.stars i:nth-child(3) { animation-delay: -933ms; }
+
+.bit {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--c);
+  animation: bit 1700ms ease-in forwards;
+}
+
+@keyframes throb {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.45); }
+}
+
+@keyframes glow {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.5) saturate(1.3); }
+}
+
+@keyframes combo {
+  0% { opacity: 0; transform: scale(2.2); }
+  14% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  14% { opacity: 1; transform: translate(-50%, -64%) scale(1.3); }
+  28% { transform: translate(-50%, -78%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -170%) scale(1); }
+}
+
+@keyframes spark {
+  0% { opacity: 1; transform: scale(0.2) rotate(0deg); }
+  40% { opacity: 1; transform: scale(1.1) rotate(12deg); }
+  100% { opacity: 0; transform: scale(1.35) rotate(20deg); }
+}
+
+@keyframes banner {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(0.92); }
+  18% { transform: translate(-50%, -50%) scale(1.05); }
+  26% { transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -64%) scale(1); }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(30px) rotate(0deg) scaleY(0.38); }
+  to { transform: rotate(360deg) translateX(30px) rotate(-360deg) scaleY(0.38); }
+}
+
+@keyframes bit {
+  0% { opacity: 1; translate: 0 0; rotate: 0deg; }
+  30% { translate: calc(var(--x) * 0.6px) -80px; }
+  100% { opacity: 0; translate: calc(var(--x) * 1px) 130px; rotate: calc(var(--r) * 1deg); }
+}

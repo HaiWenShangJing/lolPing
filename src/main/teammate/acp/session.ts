@@ -37,25 +37,54 @@ export interface AcpStart {
   cwd: string;
   env: NodeJS.ProcessEnv;
   version: string;
+  /** Called with each piece of text the agent says in a session (a reply is the pieces of one prompt, in order). */
+  onText?: (sessionId: string, text: string) => void;
+}
+
+/** The text of an `agent_message_chunk` update, with the session it is for; null for any other message. */
+export function messageText(method: string, params: unknown): { sessionId: string; text: string } | null {
+  if (method !== 'session/update' || !isRecord(params) || typeof params.sessionId !== 'string') return null;
+  const u = params.update;
+  if (!isRecord(u) || u.sessionUpdate !== 'agent_message_chunk' || !isRecord(u.content)) return null;
+  return u.content.type === 'text' && typeof u.content.text === 'string' ? { sessionId: params.sessionId, text: u.content.text } : null;
 }
 
 /** Starts the agent and a session in it (no MCP servers of the client's: the agent reads its own from its flags). */
 export async function startAcpSession(o: AcpStart): Promise<AcpSession> {
   const proc = await o.open(o.command, o.args, o.cwd, o.env);
-  const client = new AcpClient(proc, o.after, { request: refuseAll });
+  const onText = o.onText;
+  const client = new AcpClient(proc, o.after, {
+    request: refuseAll,
+    ...(onText ? {
+      notification: (method: string, params: unknown) => {
+        const m = messageText(method, params);
+        if (m) onText(m.sessionId, m.text);
+      },
+    } : {}),
+  });
   const stderr = (): string => proc.stderr?.() ?? '';
   try {
     await client.request('initialize', {
       protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'lolPing', version: o.version },
     }, INIT_MS);
-    const made = await client.request<unknown>('session/new', { cwd: o.cwd, mcpServers: [] }, NEW_SESSION_MS);
-    const id = isRecord(made) ? made.sessionId : null;
-    if (typeof id !== 'string' || id === '') throw new Error('The agent gave no session.');
-    return { client, sessionId: id, models: parseHostModels(made), stderr };
+    const made = await openSession(client, o.cwd);
+    return { client, sessionId: made.id, models: made.models, stderr };
   } catch (err) {
     client.close();
     throw err;
   }
+}
+
+/** Opens one more session in the agent. */
+export async function newAcpSession(client: AcpClient, cwd: string): Promise<string> {
+  return (await openSession(client, cwd)).id;
+}
+
+async function openSession(client: AcpClient, cwd: string): Promise<{ id: string; models: HostModel[] }> {
+  const made = await client.request<unknown>('session/new', { cwd, mcpServers: [] }, NEW_SESSION_MS);
+  const id = isRecord(made) ? made.sessionId : null;
+  if (typeof id !== 'string' || id === '') throw new Error('The agent gave no session.');
+  return { id, models: parseHostModels(made) };
 }
 
 /** The models Copilot CLI offers this user: a session is opened for the list alone and closed, and no prompt is sent. */

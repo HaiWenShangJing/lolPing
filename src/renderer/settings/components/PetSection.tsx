@@ -1,7 +1,7 @@
 import { Button, Combobox, Dropdown, Option, Textarea } from '@fluentui/react-components';
-import { ArrowClockwise20Regular, Brain24Regular, Chat24Regular, Emoji24Regular } from '@fluentui/react-icons';
+import { ArrowClockwise20Regular, Brain24Regular, Chat24Regular, Emoji24Regular, Games24Regular } from '@fluentui/react-icons';
 import { Fragment, useEffect, useState } from 'react';
-import { PET_IDS, PET_RESTS, isLive2dPet, type PetId, type PetSetting } from '../../../shared/teammate/pet';
+import { PET_IDS, PET_RESTS, isFanPet, isLive2dPet, type PetId, type PetSetting } from '../../../shared/teammate/pet';
 import {
   HOST_ACTIVITIES, ROAM_KINDS, hostModel, type HostModel, type HostModelList,
 } from '../../../shared/teammate/petHost';
@@ -148,6 +148,13 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
     whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri,
     hiyori: m.petLive2d(who.hiyori), haru: m.petLive2d(who.haru), mao: m.petLive2d(who.mao),
     rice: m.petLive2d(who.rice), senko: m.petLive2d(who.senko), mark: m.petLive2d(who.mark),
+    laffey: m.petLive2d(who.laffey), unicorn: m.petLive2d(who.unicorn), javelin: m.petLive2d(who.javelin),
+    shoukaku: m.petLive2d(who.shoukaku), doubao: m.petDoubao,
+  };
+  const describe = (id: PetId): string | undefined => {
+    if (id === 'doubao') return m.petDoubaoDesc;
+    if (isFanPet(id)) return m.petFanDesc;
+    return isLive2dPet(id) ? m.petLive2dDesc : undefined;
   };
   const hosting = mate.petRoam && mate.petRoamKind === 'host';
 
@@ -237,6 +244,15 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
           </SettingRow>
         </>
       )}
+      <SettingRow icon={<Games24Regular />} title={m.petGameWerewolf} description={m.petGameWerewolfDesc}>
+        <Button onClick={() => void api.openPetGame('werewolf')}>{m.petGameOpen}</Button>
+      </SettingRow>
+      <SettingRow icon={<Games24Regular />} title={m.petGameMahjong} description={m.petGameMahjongDesc}>
+        <Button onClick={() => void api.openPetGame('mahjong')}>{m.petGameOpen}</Button>
+      </SettingRow>
+      <SettingRow icon={<Games24Regular />} title={m.petGameFight} description={m.petGameFightDesc}>
+        <Button onClick={() => void api.openPetGame('fight')}>{m.petGameStart}</Button>
+      </SettingRow>
       {PET_IDS.map((id) => {
         const pet = mate.pets[id];
         const setPet = (p: Partial<PetSetting>) =>
@@ -244,7 +260,7 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
         const own = pet.model === null ? null : list.models.find((x) => x.id === pet.model);
         return (
           <Fragment key={id}>
-            <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={isLive2dPet(id) ? m.petLive2dDesc : undefined}
+            <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={describe(id)}
               checked={pet.on} onChange={(on) => setPet({ on })} />
             <SettingRow icon={null} title={m.petRest} description={m.petRestDesc} dim={!pet.on}>
               <Dropdown style={{ minWidth: 150 }} value={m.petAnims[pet.rest] ?? pet.rest} selectedOptions={[pet.rest]}

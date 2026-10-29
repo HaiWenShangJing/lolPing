@@ -4,6 +4,8 @@
  * The pet page only applies these numbers every frame, so the maths lives here where it can be tested.
  */
 
+import { FIGHT_PERFORMANCES, fightGestureAt, isFightGesture, type Dir, type FightGesture } from './fightMotion';
+
 /** The model's parameters a performance sets, with the range Cubism allows for each (the Hiyori sample's). */
 export const L2D_RANGE = {
   ParamAngleX: [-30, 30], ParamAngleY: [-30, 30], ParamAngleZ: [-30, 30],
@@ -27,7 +29,8 @@ export interface MotionRef {
   index: number;
 }
 
-export type Gesture = 'none' | 'nod' | 'shake' | 'bow' | 'sway' | 'bounce' | 'tremble' | 'dangle' | 'look';
+export type Gesture =
+  | 'none' | 'nod' | 'shake' | 'bow' | 'sway' | 'bounce' | 'tremble' | 'dangle' | 'look' | FightGesture;
 
 export interface Performance {
   /** The model's own motion to start; null leaves its idle loop going. */
@@ -152,8 +155,12 @@ export function pickPoke(last: string | null, rand: () => number): string {
   return choices[Math.min(choices.length - 1, Math.floor(rand() * choices.length))];
 }
 
-/** The performance for an animation name; an unknown one is the idle. */
-export const performanceFor = (anim: string): Performance => PERFORMANCES[anim] ?? PERFORMANCES.idle;
+/**
+ * The performance for an animation name; an unknown one is the idle. The names of a fight's cues (`fight-punch`, ...)
+ * are not among `PERFORMANCES`, which is what a pet is told it can play, but a pet that is sent one plays it.
+ */
+export const performanceFor = (anim: string): Performance =>
+  PERFORMANCES[anim] ?? FIGHT_PERFORMANCES[anim] ?? PERFORMANCES.idle;
 
 /** The face a performance holds: its own parameters, and its `eyes` on both eyes unless it sets one itself. */
 export function faceOf(perf: Performance): Face {
@@ -174,9 +181,10 @@ const ease = (t: number, ms: number): number => clamp(t / ms, 0, 1);
 
 /**
  * The head and body movement of a gesture `tMs` after it began; it eases in over a quarter second so a new one doesn't
- * jerk the character.
+ * jerk the character. `dir` is the way the character faces (1 right, -1 left), which only a fight's gestures care about.
  */
-export function gestureAt(gesture: Gesture, tMs: number): Sway {
+export function gestureAt(gesture: Gesture, tMs: number, dir: Dir = 1): Sway {
+  if (isFightGesture(gesture)) return fightGestureAt(gesture, tMs, dir);
   const r = ease(tMs, 250);
   switch (gesture) {
     case 'none':

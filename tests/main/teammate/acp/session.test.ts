@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { listHostModels, refuseAll, startAcpSession } from '../../../../src/main/teammate/acp/session';
+import { listHostModels, messageText, newAcpSession, refuseAll, startAcpSession } from '../../../../src/main/teammate/acp/session';
 import { clock, fake } from './fakes';
 
 const models = { availableModels: [{ modelId: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', _meta: { copilotUsage: '0.33x' } }] };
@@ -26,7 +26,56 @@ describe('refuseAll', () => {
   });
 });
 
+describe('messageText', () => {
+  const chunk = (over: Record<string, unknown> = {}) => ({
+    sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' }, ...over },
+  });
+
+  it('reads the text of a message chunk with its session', () => {
+    expect(messageText('session/update', chunk())).toEqual({ sessionId: 's1', text: 'Hello' });
+  });
+
+  it('ignores every other message', () => {
+    expect(messageText('session/request_permission', chunk())).toBeNull();
+    expect(messageText('session/update', chunk({ sessionUpdate: 'agent_thought_chunk' }))).toBeNull();
+    expect(messageText('session/update', chunk({ content: { type: 'image', data: 'x' } }))).toBeNull();
+    expect(messageText('session/update', chunk({ content: { type: 'text' } }))).toBeNull();
+    expect(messageText('session/update', { update: chunk().update })).toBeNull();
+    expect(messageText('session/update', { sessionId: 's1' })).toBeNull();
+    expect(messageText('session/update', null)).toBeNull();
+  });
+});
+
 describe('startAcpSession', () => {
+  it('hands the text the agent says to onText, and opens more sessions in the same agent', async () => {
+    const f = fake();
+    const said: Array<[string, string]> = [];
+    const run = startAcpSession({
+      open: async () => f.proc, after: clock().after, command: 'copilot', args: [], cwd: 'C:\\h', env: {}, version: '1',
+      onText: (id, text) => said.push([id, text]),
+    });
+    await vi.waitFor(() => expect(f.sent).toHaveLength(1));
+    f.agent({ jsonrpc: '2.0', id: 1, result: {} });
+    await vi.waitFor(() => expect(f.sent).toHaveLength(2));
+    f.agent({ jsonrpc: '2.0', id: 2, result: { sessionId: 's1', models } });
+    const s = await run;
+
+    const more = newAcpSession(s.client, 'C:\\games');
+    await vi.waitFor(() => expect(f.sent).toHaveLength(3));
+    expect(f.sent[2]).toMatchObject({ method: 'session/new', params: { cwd: 'C:\\games', mcpServers: [] } });
+    f.agent({ jsonrpc: '2.0', id: 3, result: { sessionId: 's2' } });
+    await expect(more).resolves.toBe('s2');
+
+    const update = (sessionId: string, text: string) => ({
+      jsonrpc: '2.0', method: 'session/update',
+      params: { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } } },
+    });
+    f.agent(update('s2', '{"vote":'));
+    f.agent(update('s1', 'Hi'));
+    f.agent(update('s2', ' 3}'));
+    expect(said).toEqual([['s2', '{"vote":'], ['s1', 'Hi'], ['s2', ' 3}']]);
+  });
+
   it('initializes, opens a session without a client MCP server, and gives its models', async () => {
     const f = fake();
     const k = clock();

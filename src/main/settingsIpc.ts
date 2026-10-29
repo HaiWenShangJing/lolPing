@@ -1,6 +1,7 @@
 import { globalShortcut, ipcMain, shell } from 'electron';
 import { isCustomRef, isEmoteFx, isEmoteRefShape, type CustomEmote, type EmoteRef, type ImportResult, type SoundResult } from '../shared/emotes';
 import type { Strings } from '../shared/i18n';
+import { isPetGame, type PetGame } from '../shared/gameIpc';
 import {
   SETTINGS_CH, TEAMMATE_HISTORY_OPS, type About, type AppStatus, type CheckAgentResult, type CheckKeyResult,
   type SecretResult, type SetSettingsResult, type TeammateHistoryOp, type TeammateStatus, type UsageMonth,
@@ -87,6 +88,7 @@ export interface SettingsIpcDeps {
     /** The user makes a pet forget note `number` (counted from 1) or, with null, all of them; what it remembers now. */
     forgetPetNote(id: PetId, number: number | null): PetNote[];
     openPetLounge(): void;
+    openPetGame(game: PetGame): void;
     /** The system folder picker over the settings window; null when cancelled. */
     pickFolder(): Promise<string | null>;
     /** The JSON to paste into an agent's own MCP file; null when the pipe name can't be worked out. */
@@ -323,6 +325,9 @@ function registerTeammateIpc(d: SettingsIpcDeps): void {
     return d.teammate.forgetPetNote(id, number);
   });
   ipcMain.handle(SETTINGS_CH.teammateOpenLounge, () => d.teammate.openPetLounge());
+  ipcMain.handle(SETTINGS_CH.teammateOpenGame, (_e, game: unknown): void => {
+    if (isPetGame(game)) d.teammate.openPetGame(game);
+  });
   ipcMain.handle(SETTINGS_CH.teammatePickFolder, async (): Promise<string | null> => {
     const picked: unknown = await d.teammate.pickFolder().catch(() => null);
     return typeof picked === 'string' && picked !== '' && picked.length <= PATH_MAX ? picked : null;

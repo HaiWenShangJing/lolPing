@@ -62,8 +62,9 @@ import { strings } from '../../src/shared/i18n';
 const room = { joinClipboard: vi.fn(), create: vi.fn(), copyCode: vi.fn(), setMuted: vi.fn(), leave: vi.fn(), openSettings: vi.fn() };
 const update = { check: vi.fn(), start: vi.fn() };
 const teammate = { stop: vi.fn(), openHistory: vi.fn(), setHistoryPaused: vi.fn(), openLounge: vi.fn() };
+const games = { openWerewolf: vi.fn(), openMahjong: vi.fn(), startFight: vi.fn() };
 const handlers = {
-  openSettings: vi.fn(), setEnabled: vi.fn(), retryHelper: vi.fn(), quit: vi.fn(), room, update, teammate,
+  openSettings: vi.fn(), setEnabled: vi.fn(), retryHelper: vi.fn(), quit: vi.fn(), room, update, teammate, games,
 };
 
 type Item = { label?: string; type?: string; enabled?: boolean; checked?: boolean; submenu?: Item[]; click?: (item: Item) => void };
@@ -181,6 +182,19 @@ describe('AppTray', () => {
     expect(teammate.openLounge).toHaveBeenCalledTimes(1);
     tray.setTeammate({ running: false, historyOn: false, paused: false, pets: false });
     expect(labels()).not.toContain('Pet lounge…');
+  });
+
+  it('opens the pet games from a submenu that is always there', () => {
+    const tray = new AppTray('icon.png', handlers);
+    tray.setTeammate(null);
+    const sub = menuOf().find((i) => i.label === 'Pet games')!.submenu!;
+    expect(sub.map((i) => i.label)).toEqual(['Werewolf…', 'Mahjong…', 'Boxing match']);
+    sub[0]!.click!({});
+    sub[1]!.click!({});
+    sub[2]!.click!({});
+    expect(games.openWerewolf).toHaveBeenCalledTimes(1);
+    expect(games.openMahjong).toHaveBeenCalledTimes(1);
+    expect(games.startFight).toHaveBeenCalledTimes(1);
   });
 
     it('ignores setRoom() after destroy()', () => {

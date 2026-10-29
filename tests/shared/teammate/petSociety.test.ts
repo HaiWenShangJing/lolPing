@@ -7,7 +7,8 @@ import {
 
 const names: Record<PetId, string> = {
   whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao', rice: 'Rice',
-  senko: 'Senko', mark: 'Mark',
+  senko: 'Senko', mark: 'Mark', laffey: 'Laffey', unicorn: 'Unicorn', javelin: 'Javelin', shoukaku: 'Shoukaku',
+  doubao: 'Doubao',
 };
 const line = (seq: number, over: Partial<RoomLine> = {}): RoomLine => ({
   seq, room: 'main', from: 'airi', to: null, text: `line ${seq}`, at: 0, kind: 'say', ...over,

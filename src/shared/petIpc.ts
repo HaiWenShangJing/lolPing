@@ -22,10 +22,24 @@ export interface PetInit {
   rest: string;
 }
 
-/** `anim`: the animation to play (a key of the manifest's anims). `flip`: the pet faces left. */
+/**
+ * A cue of a fight (`FightCue`): `dir` is the way the pet faces, 1 right and -1 left, and `n` counts the cues sent, so
+ * the same cue twice in a row is told apart from one that is still going and plays again.
+ */
+export interface PetFx {
+  cue: string;
+  dir: 1 | -1;
+  n: number;
+}
+
+/**
+ * `anim`: the animation to play (a key of the manifest's anims). `flip`: the pet faces left. `fx`: a cue of a fight to
+ * act out on top, which a page that does not know it leaves out.
+ */
 export interface PetPoseMsg {
   anim: string;
   flip: boolean;
+  fx?: PetFx;
 }
 
 /** Screen position of the pointer in DIPs; main moves the window by how far it went since `start`. */

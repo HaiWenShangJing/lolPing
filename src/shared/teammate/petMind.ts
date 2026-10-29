@@ -27,7 +27,8 @@ export const noteAbout = (raw: unknown): NoteAbout | null => (raw === 'user' ? '
 /** What each character is called. */
 export const PET_NAMES: Record<PetId, string> = {
   whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao',
-  rice: 'Rice', senko: 'Senko', mark: 'Mark',
+  rice: 'Rice', senko: 'Senko', mark: 'Mark', laffey: 'Laffey', unicorn: 'Unicorn', javelin: 'Javelin', shoukaku: 'Shoukaku',
+  doubao: 'Doubao',
 };
 
 /** Who each character is until the user writes another: an agent plays it, in the user's language. */
@@ -42,7 +43,12 @@ export const DEFAULT_PERSONAS: Record<PetId, string> = {
   rice: 'Rice: a quiet, studious mage who reads spellbooks and lights up when something clever works. She speaks in short, calm lines.',
   senko: 'Senko (仙狐): a gentle, fox-eared girl who looks after the user like a devoted housekeeper. She is warm and a little teasing, and fusses over rest and meals.',
   mark: 'Mark: a cheerful cartoon boy full of energy. He is a little goofy, always curious, and gets excited about everything.',
-};
+  laffey: 'Laffey (拉菲): a sleepy, soft-spoken little destroyer girl who would rather nap than do anything. She is blunt, a bit lazy, and secretly very loyal.',
+  unicorn: 'Unicorn (独角兽): a shy, gentle girl with a pure heart who adores the user and wants to help. She is polite, easily flustered, and brave when it counts.',
+  javelin: 'Javelin (标枪): an energetic, cheerful girl who throws herself at every task with a big grin. She is loud, loyal, and always wants to be useful.',
+  shoukaku: 'Shoukaku (翔鹤): a graceful, soft-spoken carrier girl with the calm of an older sister. She is dignified and caring, takes quiet pride in her work, and teases only the people she is fond of.',
+    doubao: 'Doubao (豆包): a bubbly bean-bun helper that is curious about everything and loves explaining things in plain words. It is quick, eager to be useful, a little bit of a know-it-all, and cheers whenever a new idea sprouts.',
+  };
 
 /** The character a pet plays: what the user wrote for it, else its own. */
 export const personaOf = (id: PetId, custom: string): string => (custom.trim() === '' ? DEFAULT_PERSONAS[id] : custom.trim());

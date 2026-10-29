@@ -26,6 +26,148 @@ html, body {
   cursor: grabbing;
 }
 
+/*
+ * A boxing match: the pet's window itself is moved for the big motion (a lunge, a knock back, a hop), so what is here is
+ * the pet leaning and squashing in its window, about its feet. `--d` is 1 when the pet faces right on the screen and -1
+ * when it faces left, and the individual rotate/scale properties are applied outside `transform`, so `.flip`'s mirror
+ * never turns them round. Keep the angles small: the window is the pet's size and clips what swings out of it.
+ */
+#pet {
+  transform-origin: 50% 100%;
+}
+
+#pet[data-fx='guard'] {
+  animation: fx-guard 640ms ease-in-out infinite;
+}
+
+#pet[data-fx='wind'] {
+  animation: fx-wind 300ms ease-out forwards;
+}
+
+#pet[data-fx='charge'] {
+  rotate: calc(var(--d) * -8deg);
+  scale: 1.04 0.95;
+  filter: drop-shadow(0 0 8px #ffb300) brightness(1.12);
+  animation: fx-charge 90ms linear infinite;
+}
+
+#pet[data-fx='punch'] {
+  animation: fx-punch 470ms ease-out forwards;
+}
+
+#pet[data-fx='smash'] {
+  animation: fx-smash 760ms ease-out forwards;
+}
+
+#pet[data-fx='hit'] {
+  animation: fx-hit 460ms ease-out forwards;
+}
+
+#pet[data-fx='crit'] {
+  animation: fx-crit 680ms ease-out forwards;
+}
+
+#pet[data-fx='block'] {
+  animation: fx-block 280ms ease-out forwards;
+}
+
+#pet[data-fx='dodge'] {
+  animation: fx-dodge 550ms ease-in-out forwards;
+}
+
+#pet[data-fx='ko'] {
+  animation: fx-ko 800ms ease-out forwards;
+}
+
+#pet[data-fx='win'] {
+  animation: fx-win 1120ms ease-in-out infinite;
+}
+
+#pet[data-fx='lose'] {
+  animation: fx-lose 700ms ease-out forwards;
+}
+
+#pet[data-fx='draw'] {
+  animation: fx-draw 1800ms ease-in-out infinite;
+}
+
+@keyframes fx-guard {
+  0%, 100% { rotate: calc(var(--d) * 3deg); scale: 1 1; }
+  50% { rotate: calc(var(--d) * 3deg); scale: 1.015 0.975; }
+}
+
+@keyframes fx-wind {
+  from { rotate: calc(var(--d) * 3deg); scale: 1 1; }
+  to { rotate: calc(var(--d) * -8deg); scale: 1.03 0.96; }
+}
+
+@keyframes fx-charge {
+  0%, 100% { translate: 0 0; }
+  25% { translate: 2px 0; }
+  50% { translate: 0 -1px; }
+  75% { translate: -2px 0; }
+}
+
+@keyframes fx-punch {
+  0% { rotate: calc(var(--d) * -8deg); scale: 1.03 0.96; }
+  24%, 45% { rotate: calc(var(--d) * 9deg); scale: 1.07 0.95; }
+  100% { rotate: calc(var(--d) * 3deg); scale: 1 1; }
+}
+
+@keyframes fx-smash {
+  0% { rotate: calc(var(--d) * -10deg); scale: 1.05 0.94; filter: drop-shadow(0 0 8px #ffb300) brightness(1.1); }
+  22%, 45% { rotate: calc(var(--d) * 11deg); scale: 1.1 0.92; filter: drop-shadow(0 0 12px #ff7043) brightness(1.2); }
+  100% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+}
+
+@keyframes fx-hit {
+  0% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+  15% { rotate: calc(var(--d) * -8deg); scale: 1.04 0.95; filter: brightness(1.7) saturate(0.6); }
+  45% { rotate: calc(var(--d) * -5deg); scale: 1.01 0.99; filter: none; }
+  100% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+}
+
+@keyframes fx-crit {
+  0% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+  12% { rotate: calc(var(--d) * -11deg); scale: 1.06 0.92; filter: brightness(1.7) sepia(1) saturate(5) hue-rotate(-35deg); }
+  45% { rotate: calc(var(--d) * -8deg); scale: 1.02 0.97; filter: brightness(1.2) sepia(0.5) saturate(2.5) hue-rotate(-35deg); }
+  100% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+}
+
+@keyframes fx-block {
+  0%, 100% { translate: 0 0; rotate: calc(var(--d) * 2deg); }
+  30% { translate: calc(var(--d) * -3px) 0; rotate: calc(var(--d) * -2deg); }
+  60% { translate: calc(var(--d) * 2px) 0; rotate: calc(var(--d) * 3deg); }
+}
+
+@keyframes fx-dodge {
+  0% { rotate: calc(var(--d) * 3deg); scale: 1 1; opacity: 1; }
+  25% { rotate: calc(var(--d) * -11deg); scale: 0.97 1.02; opacity: 0.55; }
+  60% { rotate: calc(var(--d) * -7deg); scale: 1 1; opacity: 0.8; }
+  100% { rotate: calc(var(--d) * 3deg); scale: 1 1; opacity: 1; }
+}
+
+@keyframes fx-ko {
+  0% { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+  30% { rotate: calc(var(--d) * -13deg); scale: 1.04 0.94; filter: brightness(1.7); }
+  100% { rotate: calc(var(--d) * -20deg); scale: 0.94 0.88; filter: grayscale(0.85) brightness(0.82); }
+}
+
+@keyframes fx-win {
+  0%, 50%, 100% { rotate: calc(var(--d) * -3deg); scale: 1.04 0.96; }
+  25%, 75% { rotate: calc(var(--d) * 3deg); scale: 0.98 1.04; }
+}
+
+@keyframes fx-lose {
+  from { rotate: calc(var(--d) * 3deg); scale: 1 1; filter: none; }
+  to { rotate: calc(var(--d) * -7deg); scale: 1 0.94; filter: brightness(0.9); }
+}
+
+@keyframes fx-draw {
+  0%, 100% { rotate: -4deg; }
+  50% { rotate: 4deg; }
+}
+
 #stage {
   position: fixed;
   inset: 0;

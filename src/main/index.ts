@@ -68,15 +68,17 @@ import { MateWindows, overShownWindow } from './teammate/mateWindows';
 import { openAcp } from './teammate/acp/process';
 import { listHostModels, startAcpSession } from './teammate/acp/session';
 import { PetHost, type PetNames } from './teammate/petHost';
+import { GameBrain } from './teammate/gameBrain';
+import { GameCenter } from './teammate/gameCenter';
 import { PetGroups } from './teammate/petGroups';
 import { PetLounge } from './teammate/petLounge';
 import { PetMinds } from './teammate/petMinds';
 import { PetSociety } from './teammate/petSociety';
 import { PetRoam } from './teammate/petRoam';
 import { PetWindows } from './teammate/petWindows';
-import { DEFAULT_PETS } from '../shared/teammate/pet';
-import { forgetNote } from '../shared/teammate/petMind';
-import { normalizeHostModels, pickHostAgent, type HostModel, type HostModelList } from '../shared/teammate/petHost';
+import { DEFAULT_PETS, PET_IDS } from '../shared/teammate/pet';
+import { forgetNote, personaOf } from '../shared/teammate/petMind';
+import { hostModel, normalizeHostModels, pickHostAgent, type HostModel, type HostModelList } from '../shared/teammate/petHost';
 import { createAdapter } from './teammate/providers';
 import { SecretStore } from './teammate/secrets';
 import { StaleWatcher } from './teammate/staleWatcher';
@@ -430,6 +432,11 @@ function start(): void {
         openHistory: () => void openHistory(),
         setHistoryPaused: (paused) => setHistoryPaused(paused),
         openLounge: () => openLounge(),
+      },
+      games: {
+        openWerewolf: () => games().openWerewolf(),
+        openMahjong: () => games().openMahjong(),
+        startFight: () => startFight(),
       },
       // The tray has no card to show a result on, so the handlers toast it. Nothing to toast on once the overlays are gone.
       update: updater
@@ -894,10 +901,12 @@ function start(): void {
     const timer = setTimeout(fn, ms);
     return () => clearTimeout(timer);
   };
-  const acpSession = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): ReturnType<typeof startAcpSession> => (
+  const acpSession = (
+    command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, onText?: (sessionId: string, text: string) => void,
+  ): ReturnType<typeof startAcpSession> => (
     startAcpSession({
       open: (c, a, d, e) => openAcp({ spawn, platform: PLATFORM, killTree: killProcessTree(PLATFORM) }, c, a, d, e),
-      after: afterMs, command, args, cwd, env, version: app.getVersion(),
+      after: afterMs, command, args, cwd, env, version: app.getVersion(), onText,
     })
   );
   /** The models Copilot CLI offers. Asking is a process start, so the last answer is kept in memory and in a file. */
@@ -938,6 +947,41 @@ function start(): void {
       const error = (e instanceof Error ? e.message : String(e)).slice(0, 200);
       return { models: hostModels?.models ?? await savedHostModels(), source: 'cache', error };
     }
+  };
+  /** The games the user plays with the pets: they need Copilot CLI only for the pets' minds, not the teammate. */
+  let gameCenter: GameCenter | null = null;
+  const games = (): GameCenter => {
+    gameCenter ??= new GameCenter({
+      words: () => {
+        const lang = resolveLang(settings.language, app.getLocale());
+        const t = strings(lang, PLATFORM).teammate;
+        return { g: t.games, names: t.ask.petName, language: lang === 'zh-CN' ? 'Simplified Chinese' : 'English' };
+      },
+      petsOn: () => PET_IDS.filter((id) => settings.teammate.pets[id].on),
+      persona: (id) => personaOf(id, settings.teammate.pets[id].persona),
+      canThink: () => pickHostAgent(settings.teammate.profiles, settings.teammate.defaultProfile) !== null,
+      brain: () => {
+        const t = settings.teammate;
+        const profile = pickHostAgent(t.profiles, t.defaultProfile);
+        if (!profile) return null;
+        const cwd = join(app.getPath('temp'), 'lolping-games');
+        mkdirSync(cwd, { recursive: true });
+        return new GameBrain({
+          start: acpSession, command: profile.command, model: hostModel(t.petHostModel), cwd, env: userEnv, after: afterMs,
+        });
+      },
+      after: afterMs,
+      random: Math.random,
+      petsDir: join(settingsDir(), 'pets'),
+    });
+    return gameCenter;
+  };
+  /** The pets' boxing match on the desktop: it needs two pets out, and no ping or match already under way. */
+  const startFight = (): void => {
+    const t = text().teammate;
+    const { few, busy, ...words } = t.games.fight;
+    const started = pets.startFight({ names: t.ask.petName, ...words });
+    if (started !== 'ok') overlays.toast(started === 'few' ? few : busy, '');
   };
   /** Screen captures live here only during an ask; anything left from a crash or a late write goes at start and stop. */
   const mateTempDir = (): string => join(app.getPath('temp'), 'lolping-teammate');
@@ -1362,6 +1406,11 @@ function start(): void {
         return [...m.minds.notes(id)];
       },
       openPetLounge: () => openLounge(),
+      openPetGame: (game) => {
+        if (game === 'werewolf') games().openWerewolf();
+        else if (game === 'mahjong') games().openMahjong();
+        else startFight();
+      },
       checkAgent: async (p) => {
         const env = await userEnv();
         return checkAgent(p, {
@@ -1450,6 +1499,7 @@ function start(): void {
     transfer.stop();
     stopWaitingForAccess();
     const mateStopped = stopMate();
+    gameCenter?.destroy();
     pets.destroy();
     tray.destroy();
     panels.destroy();

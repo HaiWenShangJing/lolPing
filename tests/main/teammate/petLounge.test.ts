@@ -66,7 +66,8 @@ vi.mock('../../../src/main/paths', () => ({ preloadPath: () => 'preload.js' }));
 
 const NAMES: Record<PetId, string> = {
   whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao', rice: 'Rice',
-  senko: 'Senko', mark: 'Mark',
+  senko: 'Senko', mark: 'Mark', laffey: 'Laffey', unicorn: 'Unicorn', javelin: 'Javelin', shoukaku: 'Shoukaku',
+  doubao: 'Doubao',
 };
 const TEXT: LoungeText = {
   title: 'Lounge', hint: 'Say something', everyone: 'Everyone', send: 'Send', empty: 'Nobody is out', you: 'You', noted: 'noted',

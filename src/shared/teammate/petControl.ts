@@ -236,3 +236,4 @@ export function describePetsBrief(pets: readonly PetStatus[]): string {
 
 export const NO_PETS = 'No desktop pet is showing. The user can turn one on in lolPing\'s Desktop pets settings.';
 export const PETS_BUSY = 'The pets are busy with the user\'s own ping; try again in a moment.';
+export const PETS_FIGHTING = 'The pets are in the middle of a boxing match; try again in a moment.';

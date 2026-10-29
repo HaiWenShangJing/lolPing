@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { LIVE2D_PETS, parsePetManifest, PET_IDS, PET_POSES, PET_RESTS } from '../../../src/shared/teammate/pet';
 
 const root = join(__dirname, '..', '..', '..', 'assets', 'pets');
-// Live2D Inc.'s files can't be committed: a pack that is downloaded is checked only where tools/import-pets has put it.
-const downloaded = new Set<string>(LIVE2D_PETS);
-const packs = PET_IDS.filter((id) => !downloaded.has(id) || existsSync(join(root, id, 'manifest.json')));
+// Live2D Inc.'s files and Doubao's frames can't be committed: such a pack is checked only where tools/import-pets has put it.
+const local = new Set<string>([...LIVE2D_PETS, 'doubao']);
+const packs = PET_IDS.filter((id) => !local.has(id) || existsSync(join(root, id, 'manifest.json')));
 
 describe.each(packs)('bundled %s pack', (id) => {
   const manifest = parsePetManifest(JSON.parse(readFileSync(join(root, id, 'manifest.json'), 'utf8')));

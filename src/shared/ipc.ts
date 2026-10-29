@@ -1,5 +1,6 @@
 import type { EmoteArt, EmoteFile, EmoteRef, ImportResult, SoundResult } from './emotes';
 import type { Lang } from './i18n';
+import type { PetGame } from './gameIpc';
 import type { PingId } from './pings';
 import type { Platform } from './platform';
 import type { HelperStatus, WheelKind } from './protocol';
@@ -323,6 +324,8 @@ export interface SettingsApi {
   forgetPetNote(id: PetId, number: number | null): Promise<PetNote[]>;
   /** Opens the window where the pets' talk is read and joined. */
   openPetLounge(): Promise<void>;
+  /** Opens a game to play with the pets. */
+  openPetGame(game: PetGame): Promise<void>;
   /** Shows the system folder picker; the chosen path, or null when it was cancelled. */
   pickTeammateFolder(): Promise<string | null>;
   /**

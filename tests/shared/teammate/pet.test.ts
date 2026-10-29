@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { L2D_ANIMS } from '../../../src/shared/teammate/live2d';
 import {
-  keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside, standLeftOf, stepToward,
+  FAN_PETS, LIVE2D_PETS, keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside,
+  standLeftOf, stepToward,
 } from '../../../src/shared/teammate/pet';
 
 const pack = (over: Record<string, unknown> = {}) => ({
@@ -11,12 +12,17 @@ const pack = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('petIds', () => {
+  it('keeps the fan and game characters among the Live2D ones, which are never in a shared installer', () => {
+    for (const id of FAN_PETS) expect(LIVE2D_PETS).toContain(id);
+    expect(FAN_PETS).toEqual(expect.arrayContaining(['senko', 'laffey', 'unicorn', 'javelin', 'shoukaku']));
+  });
   it('lists the characters that are on', () => {
     const one = (rest: string) => ({ on: false, rest, model: null, persona: '' });
     const on = (...ids: string[]) => {
       const pets = {
         whale: one('idle'), naiwa: one('sit'), shenshen: one('idle'), airi: one('idle'), hiyori: one('idle'),
         haru: one('idle'), mao: one('idle'), rice: one('idle'), senko: one('idle'), mark: one('idle'),
+        laffey: one('idle'), unicorn: one('idle'), javelin: one('idle'), shoukaku: one('idle'), doubao: one('idle'),
       };
       for (const id of ids) pets[id as keyof typeof pets].on = true;
       return pets;
@@ -36,6 +42,7 @@ describe('normalizePets', () => {
     expect(normalizePets(undefined)).toEqual({
       whale: off('idle'), naiwa: off('sit'), shenshen: off('idle'), airi: off('idle'), hiyori: off('idle'),
       haru: off('idle'), mao: off('idle'), rice: off('idle'), senko: off('idle'), mark: off('idle'),
+      laffey: off('idle'), unicorn: off('idle'), javelin: off('idle'), shoukaku: off('idle'), doubao: off('idle'),
     });
   });
 

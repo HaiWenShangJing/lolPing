@@ -1,0 +1,260 @@
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1d1612;
+  color: #f0e2c8;
+  font: 14px/1.3 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  user-select: none;
+}
+
+#stage {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+/* The picture's own 1280 by 720 space, laid over the stage by the page. */
+#overlay {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+#overlay > * {
+  position: absolute;
+}
+
+.bubble {
+  max-width: 250px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: #fff8e6;
+  color: #3a2a1a;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, calc(-100% - 10px));
+  transform-origin: 50% 100%;
+  animation: pop 0.18s ease-out;
+  transition: opacity 0.22s;
+}
+
+.bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-top-color: #fff8e6;
+  border-bottom-width: 0;
+}
+
+.shout {
+  white-space: nowrap;
+  font-size: 66px;
+  font-weight: 900;
+  color: #ffd84a;
+  -webkit-text-stroke: 7px #7a1d12;
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 #4a0f08, 0 0 26px rgba(255, 150, 40, 0.75);
+  transform: translate(-50%, -50%) rotate(-6deg);
+  animation: slam 0.22s cubic-bezier(0.2, 1.4, 0.4, 1);
+  transition: opacity 0.22s;
+}
+
+.toast {
+  padding: 6px 20px;
+  border-radius: 999px;
+  background: rgba(20, 14, 10, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 20px;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  animation: drop 0.25s ease-out;
+  transition: opacity 0.22s;
+}
+
+.plate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 14px 3px 10px;
+  border-radius: 999px;
+  background: rgba(20, 14, 10, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+
+.plate .badge {
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #c0262d;
+  color: #fff;
+  font-size: 14px;
+}
+
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c, #aaa);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.out {
+  opacity: 0;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 10px)) scale(0.8);
+  }
+}
+
+@keyframes slam {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-6deg) scale(2.2);
+  }
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -80%);
+  }
+}
+
+#bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 38px;
+  padding: 0 12px;
+  background: linear-gradient(rgba(20, 14, 10, 0.88), rgba(20, 14, 10, 0));
+}
+
+#bar[hidden],
+#picker[hidden],
+#status[hidden] {
+  display: none;
+}
+
+#title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+#round,
+#wall {
+  opacity: 0.85;
+}
+
+#bar .spacer {
+  flex: 1;
+}
+
+#bar button {
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 14, 10, 0.6);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+#bar button:hover,
+#bar button[aria-expanded="true"] {
+  background: rgba(90, 64, 42, 0.85);
+}
+
+#picker {
+  position: fixed;
+  right: 12px;
+  top: 42px;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 270px;
+  max-height: calc(100% - 60px);
+  padding: 8px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #5b4230;
+  background: rgba(28, 20, 15, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #4a3626;
+  background: #2b1f17;
+  color: #e9d9bd;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: #382a1f;
+}
+
+.chip.on {
+  border-color: #e0b04a;
+  background: #3b2a1c;
+}
+
+.chip .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip .no {
+  min-width: 18px;
+  border-radius: 9px;
+  background: #e0b04a;
+  color: #2b1f17;
+  font-size: 12px;
+  text-align: center;
+}
+
+#status {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 18px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}

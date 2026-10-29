@@ -52,6 +52,7 @@ const api: SettingsApi = {
   getPetNotes: (id) => ipcRenderer.invoke(SETTINGS_CH.teammatePetNotes, id),
   forgetPetNote: (id, number) => ipcRenderer.invoke(SETTINGS_CH.teammateForgetPetNote, id, number),
   openPetLounge: () => ipcRenderer.invoke(SETTINGS_CH.teammateOpenLounge),
+  openPetGame: (game) => ipcRenderer.invoke(SETTINGS_CH.teammateOpenGame, game),
   pickTeammateFolder: () => ipcRenderer.invoke(SETTINGS_CH.teammatePickFolder),
   getTeammateAgentSnippet: (profileId) => ipcRenderer.invoke(SETTINGS_CH.teammateAgentSnippet, profileId),
   getTeammateConnectSnippet: (appId) => ipcRenderer.invoke(SETTINGS_CH.teammateConnectSnippet, appId),

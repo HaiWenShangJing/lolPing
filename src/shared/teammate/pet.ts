@@ -3,19 +3,36 @@
 import { L2D_ANIMS, L2D_RESTS, type MotionRef } from './live2d';
 import { PERSONA_MAX, cleanLine, modelId } from './petText';
 
-export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori', 'haru', 'mao', 'rice', 'senko', 'mark'] as const;
+export const PET_IDS = [
+  'whale', 'naiwa', 'shenshen', 'airi', 'hiyori', 'haru', 'mao', 'rice', 'senko', 'mark', 'laffey', 'unicorn', 'javelin',
+  'shoukaku', 'doubao',
+] as const;
 export type PetId = (typeof PET_IDS)[number];
 
 export const isPetId = (raw: unknown): raw is PetId => (PET_IDS as readonly unknown[]).includes(raw);
 
 /** The characters that are Live2D models: their files are downloaded, not part of the repository. */
-export const LIVE2D_PETS: readonly PetId[] = ['hiyori', 'haru', 'mao', 'rice', 'senko', 'mark'];
+export const LIVE2D_PETS: readonly PetId[] = [
+  'hiyori', 'haru', 'mao', 'rice', 'senko', 'mark', 'laffey', 'unicorn', 'javelin', 'shoukaku',
+];
 export const isLive2dPet = (id: PetId): boolean => LIVE2D_PETS.includes(id);
+
+/** The Live2D characters that are fan or game art, for personal use: they are never part of an installer you share. */
+export const FAN_PETS: readonly PetId[] = ['senko', 'laffey', 'unicorn', 'javelin', 'shoukaku'];
+export const isFanPet = (id: PetId): boolean => FAN_PETS.includes(id);
 
 /** Which way each pack's art looks when unflipped, so running can face the way it goes. */
 export const PET_FACES: Record<PetId, 'left' | 'right'> = {
   whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right', hiyori: 'right',
-  haru: 'right', mao: 'right', rice: 'right', senko: 'right', mark: 'right',
+  haru: 'right', mao: 'right', rice: 'right', senko: 'right', mark: 'right', laffey: 'right', unicorn: 'right',
+  javelin: 'right', shoukaku: 'right', doubao: 'right',
+};
+
+/** The colour of each character's avatar in the game windows and the lounge. */
+export const PET_COLORS: Record<PetId, string> = {
+  whale: '#2f8fd0', naiwa: '#3a9a4a', shenshen: '#8a5bd0', airi: '#d0568a', hiyori: '#d08a22',
+  haru: '#2fa38a', mao: '#6a4fb0', rice: '#c0432b', senko: '#d9774a', mark: '#9a6b3f', laffey: '#e05a7a',
+  unicorn: '#7aa7d9', javelin: '#4aa3a2', shoukaku: '#c2578f', doubao: '#5b6cff',
 };
 
 /**
@@ -51,6 +68,13 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
   rice: L2D_RESTS,
   senko: L2D_RESTS,
   mark: L2D_RESTS,
+  laffey: L2D_RESTS,
+  unicorn: L2D_RESTS,
+  javelin: L2D_RESTS,
+  shoukaku: L2D_RESTS,
+  doubao: [
+    'idle', 'wave', 'dance', 'love', 'shy', 'nap', 'think', 'celebrate', 'confused', 'surprised', 'sad', 'angry', 'nod',
+  ],
 };
 
 export const DEFAULT_PETS: PetsSetting = {
@@ -64,6 +88,11 @@ export const DEFAULT_PETS: PetsSetting = {
   rice: { on: false, rest: PET_RESTS.rice[0], model: null, persona: '' },
   senko: { on: false, rest: PET_RESTS.senko[0], model: null, persona: '' },
   mark: { on: false, rest: PET_RESTS.mark[0], model: null, persona: '' },
+  laffey: { on: false, rest: PET_RESTS.laffey[0], model: null, persona: '' },
+  unicorn: { on: false, rest: PET_RESTS.unicorn[0], model: null, persona: '' },
+  javelin: { on: false, rest: PET_RESTS.javelin[0], model: null, persona: '' },
+  shoukaku: { on: false, rest: PET_RESTS.shoukaku[0], model: null, persona: '' },
+  doubao: { on: false, rest: PET_RESTS.doubao[0], model: null, persona: '' },
 };
 
 /** Reads the saved setting; anything unknown falls back to off and the character's default animation. */

@@ -3,21 +3,28 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { APP_SCHEME } from '../appProtocol';
 import { IS_LINUX, IS_MAC, loadPage, preloadPath } from '../paths';
-import { PET_CH, parsePetDrag, parsePetHit, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg } from '../../shared/petIpc';
+import {
+  PET_CH, parsePetDrag, parsePetHit, type PetFx, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg,
+} from '../../shared/petIpc';
 import {
   keepInside, parsePetManifest, petIds, standBeside, standLeftOf, stepToward, DEFAULT_PETS, PET_FACES, PET_IDS, type PetId, type PetManifest, type PetPose, type PetsSetting,
 } from '../../shared/teammate/pet';
 import { moodAnim, type Mood } from '../../shared/teammate/mood';
 import { glanceFlip, lifeStep, startLife, type Life } from '../../shared/teammate/life';
 import { gazeToward } from '../../shared/teammate/live2d';
+import { animForCue, type Dir, type FightCue } from '../../shared/teammate/fightMotion';
 import {
-  NO_PETS, PETS_BUSY, describePets, speechMs, walkSpot, type PetCommand, type PetDriveResult, type PetStatus, type PetTarget,
+  NO_PETS, PETS_BUSY, PETS_FIGHTING, describePets, speechMs, walkSpot, type PetCommand, type PetDriveResult, type PetStatus,
+  type PetTarget,
 } from '../../shared/teammate/petControl';
 import { PetSpeech } from './petSpeech';
 import { PetChat } from './petChat';
+import { FightRing } from './fightRing';
+import { PetFight, type FightHost, type FightText, type RingHandle } from './petFight';
 import { DOUBLE_TAP_MS, isTap } from '../../shared/teammate/petHost';
 
 type Point = { x: number; y: number };
+type Rect = Point & { width: number; height: number };
 
 const inside = (r: { x: number; y: number; width: number; height: number }, p: Point): boolean =>
   p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
@@ -41,8 +48,14 @@ const SPOT_HOLD_MS = 45_000;
 /** How long an animation an agent asked for plays before the pet goes back to resting. */
 const SHOW_MS = 8_000;
 
-/** `toSpot` and `atSpot` are an agent's errand (see `drive`); the others follow the user's pings. */
-type Where = 'home' | 'toPing' | 'atPing' | 'back' | 'toSpot' | 'atSpot';
+/** How far a fighter's speech bubble moves to the pet's back, so it doesn't hide the one it faces. */
+const FIGHT_BUBBLE_SHIFT = 60;
+
+/**
+ * `toSpot` and `atSpot` are an agent's errand (see `drive`) and `fight` is a boxing match (see `startFight`), which
+ * moves the pet itself; the others follow the user's pings.
+ */
+type Where = 'home' | 'toPing' | 'atPing' | 'back' | 'toSpot' | 'atSpot' | 'fight';
 
 interface Pet {
   id: PetId;
@@ -80,6 +93,10 @@ interface Pet {
   show: number;
   /** An animation an agent asked for while the pet was on its way: it plays on arrival. */
   arrive: string | null;
+  /** The page is showing a fight cue (see `cueFighter`): the next pose goes out even if it names the same animation. */
+  fx: boolean;
+  /** The way a fighter faces on the screen. */
+  fightDir: Dir;
 }
 
 /** What a double tap on a pet does: opens a box to type to it, which the host agent answers. */
@@ -122,6 +139,12 @@ export class PetWindows {
   /** How long the answer that came in takes to say; a Live2D pet moves its mouth for it. */
   private talkMs = 0;
   private captureExcluded = false;
+  /** The boxing match that is on, if one is. */
+  private fight: PetFight | null = null;
+  /** The overlays of the bouts that are on. */
+  private readonly rings = new Set<FightRing>();
+  /** Numbers the cues sent to the pages, so a page can tell a new one from a pose it already has. */
+  private fxSeq = 0;
 
   constructor(private readonly dir: string) {
     ipcMain.on(PET_CH.drag, this.onDrag);
@@ -135,6 +158,7 @@ export class PetWindows {
     const want = petIds(setting);
     for (const [id, pet] of [...this.pets]) {
       if (want.includes(id)) continue;
+      if (this.fight?.has(id)) this.stopFight();
       this.pets.delete(id);
       this.speech.hide(id);
       if (!pet.win.isDestroyed()) pet.win.destroy();
@@ -168,7 +192,8 @@ export class PetWindows {
       if (!pet.manifest.live2d || pet.win.isDestroyed()) continue;
       if (pet.interactive && !pet.drag && !inside(pet.win.getBounds(), pointer)) this.setInteractive(pet, false); // the page can't tell it left
       const head = { x: pet.at.x + pet.manifest.width / 2, y: pet.at.y + pet.manifest.height * HEAD_AT };
-      const gaze = gazeToward(head, pointer);
+      // A fighter keeps its eyes on the one it faces.
+      const gaze = pet.where === 'fight' ? { x: pet.fightDir * 0.9, y: 0 } : gazeToward(head, pointer);
       if (pet.gaze && pet.gaze.x === gaze.x && pet.gaze.y === gaze.y) continue;
       pet.gaze = gaze;
       const msg: PetLookMsg = gaze;
@@ -219,6 +244,7 @@ export class PetWindows {
   /** The ask's ping is at `ping` (screen DIPs): every pet walks to stand left of it and thinks, the bubble opens on the right. */
   goTo(ping: Point): void {
     if (this.pets.size === 0) return;
+    this.stopFight();
     this.endErrands();
     this.ping = ping;
     this.waiting = true;
@@ -240,6 +266,7 @@ export class PetWindows {
   /** An ordinary ping was placed at ping (screen DIPs): pets run over and stay there until the next ping or a drag. */
   visit(ping: Point): void {
     if (this.pets.size === 0) return;
+    this.stopFight();
     this.endErrands();
     this.ping = ping;
     this.waiting = false;
@@ -277,7 +304,7 @@ export class PetWindows {
     this.mood = null;
     this.talkMs = 0;
     for (const pet of this.pets.values()) {
-      if (pet.where === 'home') continue;
+      if (pet.where === 'home' || pet.where === 'fight') continue;
       pet.where = 'back';
       pet.hold = null;
       pet.show = 0;
@@ -292,6 +319,7 @@ export class PetWindows {
     this.captureExcluded = on;
     this.speech.setCaptureExcluded(on);
     this.chat.setCaptureExcluded(on);
+    for (const ring of this.rings) ring.setCaptureExcluded(on);
     for (const pet of this.pets.values()) if (!pet.win.isDestroyed()) pet.win.setContentProtection(on);
   }
 
@@ -304,6 +332,7 @@ export class PetWindows {
     if (this.pets.size === 0) return { ok: false, text: NO_PETS };
     if (cmd.kind === 'status') return { ok: true, text: describePets(this.statuses()) };
     if (this.ping !== null) return { ok: false, text: PETS_BUSY };
+    if (this.fight !== null) return { ok: false, text: PETS_FIGHTING };
     const named = cmd.pet === null ? null : this.pets.get(cmd.pet);
     if (cmd.pet !== null && !named) {
       return { ok: false, text: `The pet ${cmd.pet} isn't showing. ${describePets(this.statuses())}` };
@@ -417,6 +446,145 @@ export class PetWindows {
     }
   }
 
+  /**
+   * A boxing match among the pets that are showing, two by two. The user's own ping comes first: with one on it is
+   * 'busy', and a ping that comes in ends the match. 'few' when there are not two pets to fight.
+   */
+  startFight(text: FightText): 'ok' | 'few' | 'busy' {
+    if (this.ping !== null || this.fight !== null) return 'busy';
+    const ids = PET_IDS.filter((id) => {
+      const pet = this.pets.get(id);
+      return pet && !pet.win.isDestroyed() && !pet.drag;
+    });
+    if (ids.length < 2) return 'few';
+    const fight: PetFight = new PetFight(this.fightHost(), text, Math.random, () => {
+      if (this.fight === fight) this.fight = null;
+    });
+    this.fight = fight;
+    if (fight.start(ids)) return 'ok';
+    this.fight = null;
+    return 'few';
+  }
+
+  /** The match is over now (a ping came, the user took a pet, or one was turned off): the pets go home. */
+  stopFight(): void {
+    const fight = this.fight;
+    this.fight = null;
+    fight?.stop();
+  }
+
+  /** Whether a boxing match is on. */
+  get fighting(): boolean {
+    return this.fight !== null;
+  }
+
+  private fightHost(): FightHost {
+    const showing = (id: PetId): Pet | null => {
+      const pet = this.pets.get(id);
+      return pet && !pet.win.isDestroyed() ? pet : null;
+    };
+    return {
+      size: (id) => {
+        const pet = showing(id);
+        return pet ? { width: pet.manifest.width, height: pet.manifest.height } : null;
+      },
+      at: (id) => {
+        const pet = showing(id);
+        return pet ? { ...pet.at } : null;
+      },
+      take: (id) => this.takeFighter(showing(id)),
+      place: (id, to) => {
+        const pet = showing(id);
+        if (pet) this.placeFighter(pet, to);
+      },
+      run: (id, dir) => {
+        const pet = showing(id);
+        if (!pet) return;
+        this.faceFighter(pet, dir);
+        this.setPose(pet, 'walk');
+      },
+      cue: (id, cue, dir) => {
+        const pet = showing(id);
+        if (pet) this.cueFighter(pet, cue, dir);
+      },
+      say: (id, text, ms) => {
+        const pet = showing(id);
+        if (!pet) return;
+        this.speak(pet, ms);
+        this.speech.show(id, text, '', this.bubbleRect(pet), ms);
+      },
+      release: (id) => {
+        const pet = showing(id);
+        if (pet) this.releaseFighter(pet);
+      },
+      area: () => screen.getPrimaryDisplay().workArea,
+      openRing: (rect) => this.openRing(rect),
+    };
+  }
+
+  /** The pet is the match's now: an agent's errand is over for it, and it doesn't walk or live idly on its own. */
+  private takeFighter(pet: Pet | null): boolean {
+    if (!pet || pet.drag) return false;
+    pet.where = 'fight';
+    pet.hold = null;
+    pet.show = 0;
+    pet.arrive = null;
+    this.speech.hide(pet.id);
+    return true;
+  }
+
+  private placeFighter(pet: Pet, to: Point): void {
+    pet.at = { x: to.x, y: to.y };
+    pet.win.setBounds({ x: Math.round(to.x), y: Math.round(to.y), width: pet.manifest.width, height: pet.manifest.height });
+    this.speech.move(pet.id, this.bubbleRect(pet));
+  }
+
+  /** Turns a fighter to face `dir` on the screen. */
+  private faceFighter(pet: Pet, dir: Dir): void {
+    const artLeft = PET_FACES[pet.id] === 'left';
+    pet.fightDir = dir;
+    pet.flip = dir === 1 ? artLeft : !artLeft;
+  }
+
+  /** Plays a fight cue: a Live2D pet does its own, a pack of frames the best animation it has, with the cue's motion on it. */
+  private cueFighter(pet: Pet, cue: FightCue, dir: Dir): void {
+    this.faceFighter(pet, dir);
+    const anim = animForCue(cue, !!pet.manifest.live2d, (a) => a in pet.manifest.anims);
+    this.setPose(pet, 'happy', anim, { cue, dir, n: ++this.fxSeq });
+  }
+
+  /** The bout is over for the pet: it walks home, unless the user has it or a ping has already taken it. */
+  private releaseFighter(pet: Pet): void {
+    if (pet.where !== 'fight') return;
+    this.speech.hide(pet.id);
+    if (pet.drag) {
+      pet.where = 'home'; // the user put it down where it is when they let go
+      return;
+    }
+    pet.where = 'back';
+    pet.target = pet.home;
+    pet.moveAt = Date.now();
+    this.startTimer();
+  }
+
+  private openRing(rect: Rect): RingHandle {
+    const ring = new FightRing(rect, this.captureExcluded);
+    this.rings.add(ring);
+    return {
+      send: (msgs) => ring.send(msgs),
+      close: () => {
+        this.rings.delete(ring);
+        ring.close();
+      },
+    };
+  }
+
+  /** Where a pet's speech bubble stands: over the pet; over a fighter it moves to the pet's back, clear of the one it faces. */
+  private bubbleRect(pet: Pet): Rect {
+    const rect = { x: Math.round(pet.at.x), y: Math.round(pet.at.y), width: pet.manifest.width, height: pet.manifest.height };
+    return pet.where === 'fight' ? { ...rect, x: rect.x - pet.fightDir * FIGHT_BUBBLE_SHIFT } : rect;
+  }
+
   private startDriveTimer(): void {
     this.driveTimer ??= setInterval(() => this.driveTick(), DRIVE_TICK_MS);
   }
@@ -449,6 +617,7 @@ export class PetWindows {
   }
 
   destroy(): void {
+    this.stopFight();
     ipcMain.removeListener(PET_CH.drag, this.onDrag);
     ipcMain.removeListener(PET_CH.hit, this.onHit);
     this.stopTimer();
@@ -508,6 +677,7 @@ export class PetWindows {
       const pet: Pet = {
         id, manifest, win, at: home, home, target: home, where: 'home', moveAt: 0, flip: false, pose: 'idle', anim: rest, rest, sentFlip: false, drag: null, clickAt: 0,
         life: startLife(Date.now(), Math.random), gaze: null, interactive: false, hold: null, show: 0, arrive: null,
+        fx: false, fightDir: 1,
       };
       const init: PetInit = { id, base: `${APP_SCHEME}://pets/${id}`, manifest, rest };
       win.webContents.on('did-finish-load', () => {
@@ -539,12 +709,15 @@ export class PetWindows {
     return moodAnim(pet.id, this.mood, (name) => name in pet.manifest.anims);
   }
 
-  private setPose(pet: Pet, pose: PetPose, anim: string = pose === 'idle' ? pet.rest : pose): void {
-    if ((pet.anim === anim && pet.sentFlip === pet.flip) || pet.win.isDestroyed()) return;
+  /** `fx` is a fight cue for the page to play on top of `anim` (see `cueFighter`); a pose without one ends the last. */
+  private setPose(pet: Pet, pose: PetPose, anim: string = pose === 'idle' ? pet.rest : pose, fx?: PetFx): void {
+    if (pet.win.isDestroyed()) return;
+    if (!fx && !pet.fx && pet.anim === anim && pet.sentFlip === pet.flip) return;
     pet.pose = pose;
     pet.anim = anim;
     pet.sentFlip = pet.flip;
-    const msg: PetPoseMsg = { anim, flip: pet.flip };
+    pet.fx = fx !== undefined;
+    const msg: PetPoseMsg = fx ? { anim, flip: pet.flip, fx } : { anim, flip: pet.flip };
     pet.win.webContents.send(PET_CH.pose, msg);
   }
 
@@ -566,7 +739,7 @@ export class PetWindows {
     this.lastTick = now;
     let moving = false;
     for (const pet of this.pets.values()) {
-      if (pet.win.isDestroyed() || pet.drag || pet.where === 'home' || pet.where === 'atPing' || pet.where === 'atSpot') continue;
+      if (pet.win.isDestroyed() || pet.drag || pet.where === 'home' || pet.where === 'atPing' || pet.where === 'atSpot' || pet.where === 'fight') continue;
       if (now < pet.moveAt) {
         moving = true;
         continue;
@@ -645,6 +818,7 @@ export class PetWindows {
       pet.show = 0;
       pet.arrive = null;
       this.setPose(pet, 'held');
+      if (pet.where === 'fight') this.stopFight(); // the user has stepped into the ring: the match is over
       return;
     }
     const drag = pet.drag;

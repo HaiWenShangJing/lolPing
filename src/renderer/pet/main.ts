@@ -1,4 +1,4 @@
-import type { PetApi } from '../../shared/petIpc';
+import type { PetApi, PetFx } from '../../shared/petIpc';
 import type { PetAnim } from '../../shared/teammate/pet';
 import { PET_POSES } from '../../shared/teammate/pet';
 import { startLive2d, type Live2dPet } from './live2d';
@@ -17,6 +17,8 @@ let timer: ReturnType<typeof setInterval> | null = null;
 const cache = new Map<string, HTMLImageElement>();
 /** The Live2D character, once its libraries and model have loaded; messages wait for it, in order. */
 let live: Promise<Live2dPet> | null = null;
+/** The number of the fight cue on the picture (see `act`). */
+let fxN = 0;
 
 const withLive = (f: (pet: Live2dPet) => void): void => {
   live?.then(f, () => undefined);
@@ -48,6 +50,23 @@ function play(name: string): void {
   timer = setInterval(show, 1000 / a.fps);
 }
 
+/**
+ * Plays a fight cue's movement on the picture, over the animation that is playing (the movements are in pet.css); a
+ * pose without a cue ends it. A cue that is told again starts over, so two jabs in a row both show.
+ */
+function act(fx: PetFx | undefined): void {
+  if (!fx) {
+    img.removeAttribute('data-fx');
+    return;
+  }
+  if (fx.n === fxN) return;
+  fxN = fx.n;
+  img.removeAttribute('data-fx');
+  void img.offsetWidth; // so the animation restarts
+  img.style.setProperty('--d', String(fx.dir));
+  img.dataset.fx = fx.cue;
+}
+
 window.petApi.onInit((init) => {
   base = init.base;
   anims = init.manifest.anims;
@@ -72,6 +91,7 @@ window.petApi.onPose((msg) => {
   }
   img.classList.toggle('flip', msg.flip);
   if (msg.anim !== current || timer === null) play(msg.anim);
+  act(msg.fx);
 });
 window.petApi.onLook((msg) => withLive((pet) => pet.look(msg)));
 window.petApi.onTalk((msg) => withLive((pet) => pet.talk(msg)));

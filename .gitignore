@@ -16,6 +16,12 @@ assets/pets/mao/
 assets/pets/rice/
 assets/pets/senko/
 assets/pets/mark/
+assets/pets/laffey/
+assets/pets/unicorn/
+assets/pets/javelin/
+assets/pets/shoukaku/
+# Doubao's frames are drawn by tools/import-pets/doubao.mjs (an original mascot in Doubao's colours), never committed
+assets/pets/doubao/
 # Maintainers' local notes: specs, plans and issue triage stay out of the repo
 .superpowers/
 docs/superpowers/

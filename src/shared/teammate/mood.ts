@@ -37,6 +37,14 @@ export const MOOD_ANIMS: Record<PetId, Partial<Record<Mood, string>>> = {
   rice: L2D_MOODS,
   senko: L2D_MOODS,
   mark: L2D_MOODS,
+  laffey: L2D_MOODS,
+  unicorn: L2D_MOODS,
+  javelin: L2D_MOODS,
+  shoukaku: L2D_MOODS,
+  doubao: {
+    happy: 'celebrate', love: 'love', thanks: 'wave', agree: 'nod', playful: 'dance', confused: 'confused',
+    surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'shy', tired: 'nap',
+  },
 };
 
 export function parseMood(v: unknown): Mood | null {

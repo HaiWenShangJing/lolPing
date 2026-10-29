@@ -49,6 +49,7 @@ export const SETTINGS_CH = {
   teammatePetNotes: 'teammate:petNotes',
   teammateForgetPetNote: 'teammate:forgetPetNote',
   teammateOpenLounge: 'teammate:openLounge',
+  teammateOpenGame: 'teammate:openGame',
   teammatePickFolder: 'teammate:pickFolder',
   teammateAgentSnippet: 'teammate:agentSnippet',
   teammateConnectSnippet: 'teammate:connectSnippet',

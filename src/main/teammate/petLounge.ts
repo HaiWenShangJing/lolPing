@@ -70,7 +70,7 @@ const $=id=>document.getElementById(id);
 const log=$('log'),to=$('to'),box=$('box'),btn=$('send'),empty=$('empty'),form=$('form'),tabs=$('tabs'),who=$('who'),edit=$('edit');
 const eName=$('eName'),eMembers=$('eMembers'),eSave=$('eSave'),eDel=$('eDel');
 const MAIN='${MAIN_ROOM}',MIN=${GROUP_MEMBERS_MIN};
-const hue={user:'#7a828e',whale:'#2f8fd0',naiwa:'#3a9a4a',shenshen:'#8a5bd0',airi:'#d0568a',hiyori:'#d08a22',haru:'#2fa38a',mao:'#6a4fb0',rice:'#c0432b',senko:'#d9774a',mark:'#9a6b3f'};
+const hue={user:'#7a828e',whale:'#2f8fd0',naiwa:'#3a9a4a',shenshen:'#8a5bd0',airi:'#d0568a',hiyori:'#d08a22',haru:'#2fa38a',mao:'#6a4fb0',rice:'#c0432b',senko:'#d9774a',mark:'#9a6b3f',laffey:'#e05a7a',unicorn:'#7aa7d9',javelin:'#4aa3a2',shoukaku:'#c2578f',doubao:'#5b6cff'};
 let init=null,groups=[],rosters={},cur=MAIN,editing=null,making=null;
 const store={},unread=new Set();
 const nameOf=id=>id==='user'?init.text.you:(init.names[id]||id);

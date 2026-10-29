@@ -38,6 +38,12 @@ export interface TrayHandlers {
     /** Opens the window where the pets' talk can be read and joined. */
     openLounge(): void;
   };
+  games: {
+    openWerewolf(): void;
+    openMahjong(): void;
+    /** Puts on the pets' boxing match on the desktop. */
+    startFight(): void;
+  };
 }
 
 /** What the tray shows about the room: `code` is null when not in one. */
@@ -193,6 +199,14 @@ export class AppTray {
     items.push({ type: 'separator' });
     if (this.roomsShown) items.push({ label: t.trayRoom, submenu: this.roomMenu() });
     items.push(...this.teammateItems());
+    items.push({
+      label: t.trayGames,
+      submenu: [
+        { label: t.trayGameWerewolf, click: () => this.handlers.games.openWerewolf() },
+        { label: t.trayGameMahjong, click: () => this.handlers.games.openMahjong() },
+        { label: t.trayGameFight, click: () => this.handlers.games.startFight() },
+      ],
+    });
     items.push(
       { label: t.traySettings, click: () => this.handlers.openSettings() },
       { label: t.trayQuit, click: () => this.handlers.quit() },
