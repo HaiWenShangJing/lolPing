@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetLounge, type LoungeSource } from '../../../src/main/teammate/petLounge';
 import type { RoomEvent } from '../../../src/main/teammate/petSociety';
 import { PET_CH, type LoungeInit, type LoungeMsg, type LoungeText } from '../../../src/shared/petIpc';
-import type { PetId } from '../../../src/shared/teammate/pet';
+import { PET_IDS, type PetId } from '../../../src/shared/teammate/pet';
 import type { PetGroup } from '../../../src/shared/teammate/petGroups';
 import type { RoomLine } from '../../../src/shared/teammate/petSociety';
 
@@ -64,7 +64,10 @@ vi.mock('electron', async () => {
 });
 vi.mock('../../../src/main/paths', () => ({ preloadPath: () => 'preload.js' }));
 
-const NAMES: Record<PetId, string> = { whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori' };
+const NAMES: Record<PetId, string> = {
+  whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao', rice: 'Rice',
+  senko: 'Senko', mark: 'Mark',
+};
 const TEXT: LoungeText = {
   title: 'Lounge', hint: 'Say something', everyone: 'Everyone', send: 'Send', empty: 'Nobody is out', you: 'You', noted: 'noted',
   main: 'Main', newGroup: 'New group', editGroup: 'Edit group', groupName: 'Group name', members: 'Members',
@@ -405,7 +408,7 @@ describe('the lounge page: the group editor', () => {
     p.click('#tabs .tool');
     expect(p.doc.getElementById('edit')?.hidden).toBe(false);
     expect(p.doc.getElementById('eTitle')?.textContent).toBe('New group');
-    expect(members(p).map((b) => b.value)).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
+    expect(members(p).map((b) => b.value)).toEqual([...PET_IDS]);
     expect(p.doc.getElementById('eDel')?.hidden).toBe(true);
     expect(save(p).disabled).toBe(true);
     name(p, 'Duo');

@@ -10,6 +10,12 @@ export type Mood = (typeof MOODS)[number];
 /** The moods that read as good news; the rest fall back to the thinking pose where a pack has no animation for them. */
 const UPBEAT: ReadonlySet<Mood> = new Set<Mood>(['happy', 'love', 'thanks', 'agree', 'playful']);
 
+/** The Live2D pets share their performances, so they play the same animation for a mood. */
+const L2D_MOODS: Partial<Record<Mood, string>> = {
+  happy: 'celebrate', love: 'love', thanks: 'thanks', agree: 'agree', playful: 'wink', confused: 'confused',
+  surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'shy', tired: 'tired',
+};
+
 /** The animation (a name in the pack) each pet plays for a mood; a mood a pack has no art for is simply missing. */
 export const MOOD_ANIMS: Record<PetId, Partial<Record<Mood, string>>> = {
   whale: { love: 'dance', playful: 'flying' },
@@ -25,10 +31,12 @@ export const MOOD_ANIMS: Record<PetId, Partial<Record<Mood, string>>> = {
     happy: 'celebrate', love: 'love', thanks: 'thanks', agree: 'agree', playful: 'celebrate', confused: 'confused',
     surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'awkward', tired: 'tired',
   },
-  hiyori: {
-    happy: 'celebrate', love: 'love', thanks: 'thanks', agree: 'agree', playful: 'wink', confused: 'confused',
-    surprised: 'surprised', sad: 'sad', angry: 'angry', shy: 'shy', tired: 'tired',
-  },
+  hiyori: L2D_MOODS,
+  haru: L2D_MOODS,
+  mao: L2D_MOODS,
+  rice: L2D_MOODS,
+  senko: L2D_MOODS,
+  mark: L2D_MOODS,
 };
 
 export function parseMood(v: unknown): Mood | null {

@@ -114,7 +114,7 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
   const begin = (name: string, now: number): void => {
     effective = name;
     effectiveAt = now;
-    const motion = performanceFor(name).motion;
+    const motion = pack.motions ? (pack.motions[name] ?? null) : performanceFor(name).motion;
     if (motion) {
       void model.motion(motion.group, motion.index, MotionPriority.FORCE);
       reacting = true;

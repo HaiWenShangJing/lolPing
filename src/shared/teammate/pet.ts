@@ -1,16 +1,21 @@
 /** The desktop pet: which characters show, how a character's animation pack reads, and how one walks to a ping. */
 
-import { L2D_ANIMS } from './live2d';
+import { L2D_ANIMS, L2D_RESTS, type MotionRef } from './live2d';
 import { PERSONA_MAX, cleanLine, modelId } from './petText';
 
-export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori'] as const;
+export const PET_IDS = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori', 'haru', 'mao', 'rice', 'senko', 'mark'] as const;
 export type PetId = (typeof PET_IDS)[number];
 
 export const isPetId = (raw: unknown): raw is PetId => (PET_IDS as readonly unknown[]).includes(raw);
 
+/** The characters that are Live2D models: their files are downloaded, not part of the repository. */
+export const LIVE2D_PETS: readonly PetId[] = ['hiyori', 'haru', 'mao', 'rice', 'senko', 'mark'];
+export const isLive2dPet = (id: PetId): boolean => LIVE2D_PETS.includes(id);
+
 /** Which way each pack's art looks when unflipped, so running can face the way it goes. */
 export const PET_FACES: Record<PetId, 'left' | 'right'> = {
   whale: 'right', naiwa: 'left', shenshen: 'right', airi: 'right', hiyori: 'right',
+  haru: 'right', mao: 'right', rice: 'right', senko: 'right', mark: 'right',
 };
 
 /**
@@ -40,10 +45,12 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
   airi: [
     'idle', 'celebrate', 'love', 'thanks', 'agree', 'confused', 'surprised', 'awkward', 'disagree', 'angry', 'sad', 'tired',
   ],
-  hiyori: [
-    'idle', 'sway', 'look', 'hum', 'giggle', 'shy', 'wink', 'celebrate', 'love', 'thanks', 'agree', 'confused',
-    'surprised', 'sad', 'angry', 'think', 'yawn', 'tired',
-  ],
+  hiyori: L2D_RESTS,
+  haru: L2D_RESTS,
+  mao: L2D_RESTS,
+  rice: L2D_RESTS,
+  senko: L2D_RESTS,
+  mark: L2D_RESTS,
 };
 
 export const DEFAULT_PETS: PetsSetting = {
@@ -52,6 +59,11 @@ export const DEFAULT_PETS: PetsSetting = {
   shenshen: { on: false, rest: PET_RESTS.shenshen[0], model: null, persona: '' },
   airi: { on: false, rest: PET_RESTS.airi[0], model: null, persona: '' },
   hiyori: { on: false, rest: PET_RESTS.hiyori[0], model: null, persona: '' },
+  haru: { on: false, rest: PET_RESTS.haru[0], model: null, persona: '' },
+  mao: { on: false, rest: PET_RESTS.mao[0], model: null, persona: '' },
+  rice: { on: false, rest: PET_RESTS.rice[0], model: null, persona: '' },
+  senko: { on: false, rest: PET_RESTS.senko[0], model: null, persona: '' },
+  mark: { on: false, rest: PET_RESTS.mark[0], model: null, persona: '' },
 };
 
 /** Reads the saved setting; anything unknown falls back to off and the character's default animation. */
@@ -83,10 +95,15 @@ export interface PetAnim {
   fps: number;
 }
 
-/** A Live2D pack's two files, paths inside its folder: the model's model3.json and Live2D's own Cubism Core script. */
+/**
+ * A Live2D pack's two files, paths inside its folder: the model's model3.json and Live2D's own Cubism Core script.
+ * `motions` names which of the model's own motions play for an animation; a pack without it uses the Hiyori set, and
+ * an animation it leaves out plays no motion, only the face and gesture.
+ */
 export interface Live2dPack {
   model: string;
   core: string;
+  motions?: Record<string, MotionRef>;
 }
 
 export interface PetManifest {
@@ -121,11 +138,29 @@ function packPath(v: unknown, ext: string): string | null {
   return v.split('/').some((s) => s.startsWith('.')) ? null : v;
 }
 
+const MOTION_GROUP_RE = /^[A-Za-z0-9_@.-]{1,32}$/;
+const MAX_MOTION_INDEX = 63;
+
+function motionMap(raw: unknown): Record<string, MotionRef> | null {
+  if (!isObj(raw)) return null;
+  const motions: Record<string, MotionRef> = {};
+  for (const [name, v] of Object.entries(raw)) {
+    if (!L2D_ANIMS.includes(name) || !isObj(v)) continue;
+    const { group, index } = v;
+    if (typeof group !== 'string' || !MOTION_GROUP_RE.test(group)) continue;
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > MAX_MOTION_INDEX) continue;
+    motions[name] = { group, index };
+  }
+  return motions;
+}
+
 function live2dPack(raw: unknown): Live2dPack | null {
   if (!isObj(raw)) return null;
   const model = packPath(raw.model, '.model3.json');
   const core = packPath(raw.core, '.js');
-  return model && core ? { model, core } : null;
+  if (!model || !core) return null;
+  const motions = motionMap(raw.motions);
+  return motions ? { model, core, motions } : { model, core };
 }
 
 /**

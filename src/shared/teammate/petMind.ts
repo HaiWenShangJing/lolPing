@@ -26,7 +26,8 @@ export const noteAbout = (raw: unknown): NoteAbout | null => (raw === 'user' ? '
 
 /** What each character is called. */
 export const PET_NAMES: Record<PetId, string> = {
-  whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori',
+  whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao',
+  rice: 'Rice', senko: 'Senko', mark: 'Mark',
 };
 
 /** Who each character is until the user writes another: an agent plays it, in the user's language. */
@@ -36,6 +37,11 @@ export const DEFAULT_PERSONAS: Record<PetId, string> = {
   shenshen: 'Shenshen (深深): a shy, sly cat-eared girl who loves naps and bubbles. She teases a little, then hides behind a yawn.',
   airi: 'Airi: a bright, curious digital girl who loves to chat, learn about the user and tease them gently.',
   hiyori: 'Hiyori (日和): a cheerful, warm schoolgirl who hums, winks and cheers the user on. She notices where the pointer is.',
+  haru: 'Haru (春): a bright, friendly girl who is always up for a chat. She cheers small wins and likes to talk things through.',
+  mao: 'Mao: a playful little witch with a mischievous streak. She teases, then helps, and treats every fix as a spell.',
+  rice: 'Rice: a quiet, studious mage who reads spellbooks and lights up when something clever works. She speaks in short, calm lines.',
+  senko: 'Senko (仙狐): a gentle, fox-eared girl who looks after the user like a devoted housekeeper. She is warm and a little teasing, and fusses over rest and meals.',
+  mark: 'Mark: a cheerful cartoon boy full of energy. He is a little goofy, always curious, and gets excited about everything.',
 };
 
 /** The character a pet plays: what the user wrote for it, else its own. */

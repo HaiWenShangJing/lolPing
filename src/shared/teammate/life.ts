@@ -1,12 +1,20 @@
 import { PET_FACES, type PetId } from './pet';
 
+/** What a Live2D pet does now and then; they all share the same performances. */
+const L2D_LIFE = ['sway', 'look', 'hum', 'giggle', 'shy', 'yawn', 'wink'] as const;
+
 /** What a resting pet does now and then, so it doesn't sit frozen: a few of its own animations, played for a moment. */
 export const LIFE_ANIMS: Record<PetId, readonly string[]> = {
   whale: ['dance', 'flying'],
   naiwa: ['stretch', 'laugh', 'play_bow', 'brain_loading', 'pretzel_twist', 'noodle_dance'],
   shenshen: ['wave', 'giggle', 'hum', 'yawn', 'stretch', 'bubbles', 'look', 'tail', 'cat', 'sway'],
   airi: ['tired', 'confused', 'awkward', 'love', 'thanks'],
-  hiyori: ['sway', 'look', 'hum', 'giggle', 'shy', 'yawn', 'wink'],
+  hiyori: L2D_LIFE,
+  haru: L2D_LIFE,
+  mao: L2D_LIFE,
+  rice: L2D_LIFE,
+  senko: L2D_LIFE,
+  mark: L2D_LIFE,
 };
 
 /** Milliseconds a pet rests between two of its little shows, and how long one lasts. */

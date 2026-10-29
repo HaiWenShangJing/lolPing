@@ -9,8 +9,13 @@ native/hook-helper/build/
 tools/extract-assets/.cache/
 tools/extract-assets/__pycache__/
 
-# Live2D Inc.'s Hiyori model and Cubism Core are downloaded by tools/import-pets, never committed
+# Live2D Inc.'s sample models and Cubism Core are downloaded by tools/import-pets, never committed
 assets/pets/hiyori/
+assets/pets/haru/
+assets/pets/mao/
+assets/pets/rice/
+assets/pets/senko/
+assets/pets/mark/
 # Maintainers' local notes: specs, plans and issue triage stay out of the repo
 .superpowers/
 docs/superpowers/

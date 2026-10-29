@@ -12,11 +12,11 @@ const pack = (over: Record<string, unknown> = {}) => ({
 
 describe('petIds', () => {
   it('lists the characters that are on', () => {
-    const one = (id: string, rest: string) => ({ on: false, rest, model: null, persona: '' });
+    const one = (rest: string) => ({ on: false, rest, model: null, persona: '' });
     const on = (...ids: string[]) => {
       const pets = {
-        whale: one('whale', 'idle'), naiwa: one('naiwa', 'sit'), shenshen: one('shenshen', 'idle'),
-        airi: one('airi', 'idle'), hiyori: one('hiyori', 'idle'),
+        whale: one('idle'), naiwa: one('sit'), shenshen: one('idle'), airi: one('idle'), hiyori: one('idle'),
+        haru: one('idle'), mao: one('idle'), rice: one('idle'), senko: one('idle'), mark: one('idle'),
       };
       for (const id of ids) pets[id as keyof typeof pets].on = true;
       return pets;
@@ -25,7 +25,8 @@ describe('petIds', () => {
     expect(petIds(on('whale'))).toEqual(['whale']);
     expect(petIds(on('naiwa'))).toEqual(['naiwa']);
     expect(petIds(on('airi', 'whale'))).toEqual(['whale', 'airi']);
-    expect(petIds(on('whale', 'naiwa', 'shenshen', 'airi', 'hiyori'))).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
+    expect(petIds(on('mark', 'haru', 'whale'))).toEqual(['whale', 'haru', 'mark']);
+    expect(petIds(on(...PET_IDS))).toEqual([...PET_IDS]);
   });
 });
 
@@ -34,6 +35,7 @@ describe('normalizePets', () => {
     const off = (rest: string) => ({ on: false, rest, model: null, persona: '' });
     expect(normalizePets(undefined)).toEqual({
       whale: off('idle'), naiwa: off('sit'), shenshen: off('idle'), airi: off('idle'), hiyori: off('idle'),
+      haru: off('idle'), mao: off('idle'), rice: off('idle'), senko: off('idle'), mark: off('idle'),
     });
   });
 
@@ -54,12 +56,15 @@ describe('normalizePets', () => {
     const p = normalizePets({
       whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' },
       shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' }, hiyori: { on: true, rest: 'hum' },
+      haru: { on: true, rest: 'wink' }, mao: { on: true, rest: 'dance' },
     });
     expect(p.whale).toMatchObject({ on: true, rest: 'dance' });
     expect(p.naiwa).toMatchObject({ on: true, rest: 'sit' });
     expect(p.shenshen).toMatchObject({ on: true, rest: 'dance' });
     expect(p.airi).toMatchObject({ on: true, rest: 'idle' });
     expect(p.hiyori).toMatchObject({ on: true, rest: 'hum' });
+    expect(p.haru).toMatchObject({ on: true, rest: 'wink' });
+    expect(p.mao).toMatchObject({ on: true, rest: 'idle' });
   });
 
   it('only turns a character on for true', () => {
@@ -137,6 +142,18 @@ describe('parsePetManifest for a Live2D pack', () => {
   it('refuses a live2d value that is not an object', () => {
     expect(parsePetManifest(live({ live2d: 'model.model3.json' }))).toBeNull();
     expect(parsePetManifest(live({ live2d: null }))).toBeNull();
+  });
+
+  it('has no motions of its own unless the pack names them, and then only valid ones for known animations', () => {
+    const at = (motions: unknown) => parsePetManifest(live({ live2d: { model: 'a.model3.json', core: 'core.js', motions } }));
+    expect(at(undefined)?.live2d?.motions).toBeUndefined();
+    expect(at('TapBody')?.live2d?.motions).toBeUndefined();
+    expect(at({})?.live2d?.motions).toEqual({});
+    expect(at({
+      happy: { group: 'TapBody', index: 0 }, celebrate: { group: 'Tap@Body', index: 63 }, dance: { group: 'TapBody', index: 0 },
+      love: { group: '../x', index: 0 }, thanks: { group: 'TapBody', index: -1 }, wink: { group: 'TapBody', index: 0.5 },
+      agree: { group: 'TapBody', index: 64 }, giggle: 'TapBody/0', shy: { group: 3, index: 0 },
+    })?.live2d?.motions).toEqual({ happy: { group: 'TapBody', index: 0 }, celebrate: { group: 'Tap@Body', index: 63 } });
   });
 });
 

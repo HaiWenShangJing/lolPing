@@ -1,7 +1,7 @@
 import { Button, Combobox, Dropdown, Option, Textarea } from '@fluentui/react-components';
 import { ArrowClockwise20Regular, Brain24Regular, Chat24Regular, Emoji24Regular } from '@fluentui/react-icons';
 import { Fragment, useEffect, useState } from 'react';
-import { PET_IDS, PET_RESTS, type PetId, type PetSetting } from '../../../shared/teammate/pet';
+import { PET_IDS, PET_RESTS, isLive2dPet, type PetId, type PetSetting } from '../../../shared/teammate/pet';
 import {
   HOST_ACTIVITIES, ROAM_KINDS, hostModel, type HostModel, type HostModelList,
 } from '../../../shared/teammate/petHost';
@@ -142,9 +142,12 @@ function PetMemory({ id, names }: { id: PetId; names: Record<PetId, string> }) {
 export function PetSection({ settings: s, update }: { settings: Settings; update: Update }) {
   const t = useText();
   const m = t.teammate.settings;
+  const who = t.teammate.ask.petName;
   const mate = s.teammate;
   const names: Record<PetId, string> = {
-    whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri, hiyori: m.petHiyori,
+    whale: m.petWhale, naiwa: m.petNaiwa, shenshen: m.petShenshen, airi: m.petAiri,
+    hiyori: m.petLive2d(who.hiyori), haru: m.petLive2d(who.haru), mao: m.petLive2d(who.mao),
+    rice: m.petLive2d(who.rice), senko: m.petLive2d(who.senko), mark: m.petLive2d(who.mark),
   };
   const hosting = mate.petRoam && mate.petRoamKind === 'host';
 
@@ -241,7 +244,7 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
         const own = pet.model === null ? null : list.models.find((x) => x.id === pet.model);
         return (
           <Fragment key={id}>
-            <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={id === 'hiyori' ? m.petHiyoriDesc : undefined}
+            <SwitchRow icon={<Emoji24Regular />} title={names[id]} description={isLive2dPet(id) ? m.petLive2dDesc : undefined}
               checked={pet.on} onChange={(on) => setPet({ on })} />
             <SettingRow icon={null} title={m.petRest} description={m.petRestDesc} dim={!pet.on}>
               <Dropdown style={{ minWidth: 150 }} value={m.petAnims[pet.rest] ?? pet.rest} selectedOptions={[pet.rest]}

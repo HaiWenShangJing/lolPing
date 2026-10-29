@@ -1,10 +1,11 @@
 // Downloads the art for the desktop pets into <settings folder>/pets/<id>/ and writes each manifest.json.
 // The art belongs to its authors and is not part of lolPing: run this once on your own computer.
-//   node tools/import-pets/import.mjs [--out <pets folder>] [whale] [naiwa] [shenshen] [airi] [hiyori]
+//   node tools/import-pets/import.mjs [--out <pets folder>] [whale] [naiwa] [shenshen] [airi] [hiyori] [haru] [mao] [rice] [senko] [mark]
 // `shenshen` turns transparent WebM clips into frames, so it needs ffmpeg (with libvpx-vp9 and libwebp) on the PATH or in
 // the FFMPEG variable; `airi` draws its frames with @napi-rs/canvas (`npm install --no-save @napi-rs/canvas` if it is missing).
-// `hiyori` is a Live2D model, so it brings the model and Live2D's Cubism Core (both Live2D Inc.'s, under their own terms);
-// `--out assets/pets` puts it where a build picks it up (that folder is ignored by git).
+// `hiyori`, `haru`, `mao`, `rice`, `senko` and `mark` are Live2D models, so each brings the model and Live2D's Cubism Core
+// (each under its own terms; `senko` is a fan model for personal use only); `--out assets/pets` puts them where a build
+// picks them up (those folders are ignored by git).
 import { execFile } from 'node:child_process';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -195,26 +196,32 @@ async function importAiri(root) {
 }
 
 // Hiyori, the Live2D Inc. sample model that moeru-ai/airi's web app shows (the zip is the one that app loads), and the
-// Cubism Core that draws any Live2D model. Neither may be redistributed with lolPing, so they are only downloaded here.
+// Cubism Core that draws any Live2D model. They are only downloaded here: the repository never carries them.
+const LIVE2D_CORE = 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js';
+const LIVE2D_CREDIT = `This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion.`;
+
+const live2dNotice = (title, what) => `# ${title} (Live2D)
+
+Not part of lolPing's source: downloaded by tools/import-pets/import.mjs, which is why this folder is ignored by git.
+
+- model/ is ${what} by Live2D Inc., a Live2D Original Character under the Free Material License Agreement
+  (https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html) and the Terms of Use for Live2D Cubism
+  Sample Data (https://www.live2d.com/eula/live2d-sample-model-terms_en.html). Free for individuals and small-scale
+  enterprises (under 10 million yen in annual sales); larger companies may use it internally only. Its voice clips are
+  left out. Do not take the model files out to share them on their own.
+- live2dcubismcore.min.js is the Live2D Cubism Core, under the Live2D Proprietary Software License
+  (https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html), which lets an application carry it.
+
+${LIVE2D_CREDIT}
+`;
+
 const HIYORI = {
   model: 'https://dist.ayaka.moe/live2d-models/hiyori_pro_zh.zip',
   folder: 'hiyori_pro_zh/runtime/',
   entry: 'hiyori_pro_t11.model3.json',
-  core: 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
   width: 190,
   height: 320,
 };
-
-const HIYORI_NOTICE = `# Hiyori (Live2D)
-
-Not part of lolPing: downloaded by tools/import-pets/import.mjs for your own use.
-
-- model/ is the "Hiyori Momose" sample model by Live2D Inc., under the Free Material License Agreement
-  (https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html). Free for individuals and small businesses;
-  larger companies may use it internally only. Do not redistribute it.
-- live2dcubismcore.min.js is the Live2D Cubism Core, under the Live2D Proprietary Software License
-  (https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html). Do not redistribute it with lolPing.
-`;
 
 async function importHiyori(root) {
   let unzipSync;
@@ -236,22 +243,84 @@ async function importHiyori(root) {
     if (parts.join('/') === HIYORI.entry) entry = true;
   }
   if (!entry) throw new Error(`hiyori: ${HIYORI.entry} is not in the download`);
-  await writeFile(join(out, 'live2dcubismcore.min.js'), await download(HIYORI.core));
-  await writeFile(join(out, 'NOTICE.md'), HIYORI_NOTICE);
+  await writeFile(join(out, 'live2dcubismcore.min.js'), await download(LIVE2D_CORE));
+  await writeFile(join(out, 'NOTICE.md'), live2dNotice('Hiyori', 'the "Hiyori Momose" sample model'));
   const live2d = { model: `model/${HIYORI.entry}`, core: 'live2dcubismcore.min.js' };
   await writeFile(join(out, 'manifest.json'), JSON.stringify({ id: 'hiyori', width: HIYORI.width, height: HIYORI.height, live2d }, null, 2));
   console.log(`hiyori: ${out}`);
+}
+
+// Live2D Inc.'s other free sample characters, from Live2D/CubismWebSamples (pinned to a commit): vector models with 2048 px
+// textures. Natori is left out: he is a collaboration character, which may not be altered or distributed. Each model3.json
+// lists every file the model needs, so that is all that is downloaded. `width` and `height` are the window the pet is drawn
+// in; `motions` says which of the model's own motions play for an animation (without one an animation is only face and
+// gesture, and the model's idle loop runs underneath).
+const SAMPLES = `${RAW}/Live2D/CubismWebSamples/b1de66b0b1f1cb881d95fb6158622aeb6a2827bd/Samples/Resources`;
+
+// Senko is not a Live2D sample but a fan model (4096 px textures) from the Eikanya/Live2d-model collection, pinned to a
+// commit. It has no license of its own: keep it to your own computer and out of any installer you share.
+const SENKO_NOTICE = `# Senko (Live2D)
+
+Not part of lolPing's source: downloaded by tools/import-pets/import.mjs, which is why this folder is ignored by git.
+
+- model/ is a fan-made Live2D model of Senko from "The Helpful Fox Senko-san", taken from the Eikanya/Live2d-model
+  collection (https://github.com/Eikanya/Live2d-model). It has no license: it is for personal use on your own computer.
+  Do not redistribute it, and do not put it in an installer you share.
+- live2dcubismcore.min.js is the Live2D Cubism Core, under the Live2D Proprietary Software License
+  (https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html), which lets an application carry it.
+`;
+
+const L2D_SAMPLES = {
+  haru: { dir: 'Haru', title: 'Haru', width: 180, height: 320, motions: {} },
+  mao: { dir: 'Mao', title: 'Mao', width: 230, height: 320, motions: {} },
+  rice: { dir: 'Rice', title: 'Rice', width: 300, height: 220, motions: {} },
+  senko: {
+    base: `${RAW}/Eikanya/Live2d-model/965d80ee1573652ee4ff226bfc704457bbae85e7/Live2D/Senko_Normals`,
+    entry: 'senko.model3.json', notice: SENKO_NOTICE, width: 240, height: 320, motions: {},
+  },
+  mark: { dir: 'Mark', title: 'Mark', width: 220, height: 270, motions: {} },
+};
+
+async function importSample(id, root) {
+  const sample = L2D_SAMPLES[id];
+  const base = sample.base ?? `${SAMPLES}/${sample.dir}`;
+  const entry = sample.entry ?? `${sample.dir}.model3.json`;
+  const model = JSON.parse((await download(`${base}/${entry}`)).toString('utf8'));
+  const refs = model.FileReferences;
+  // The voice clips some motions carry are Live2D's recordings, which are not licensed for use: leave them out.
+  for (const list of Object.values(refs.Motions ?? {})) for (const m of list) delete m.Sound;
+  const wanted = [
+    refs.Moc, ...refs.Textures, refs.Physics, refs.Pose, refs.DisplayInfo, refs.UserData,
+    ...(refs.Expressions ?? []).map((e) => e.File),
+    ...Object.values(refs.Motions ?? {}).flat().map((m) => m.File),
+  ].filter(Boolean);
+  const out = join(root, id);
+  const put = async (rel, data) => {
+    const parts = rel.split('/');
+    if (parts.some((p) => p === '' || p === '.' || p === '..')) throw new Error(`${id}: unsafe path ${rel}`);
+    const file = join(out, 'model', ...parts);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, data);
+  };
+  await put(entry, JSON.stringify(model, null, 2));
+  for (const rel of new Set(wanted)) await put(rel, await download(`${base}/${rel.split('/').map(encodeURIComponent).join('/')}`));
+  await writeFile(join(out, 'live2dcubismcore.min.js'), await download(LIVE2D_CORE));
+  await writeFile(join(out, 'NOTICE.md'), sample.notice ?? live2dNotice(sample.title, `the "${sample.title}" sample model`));
+  const live2d = { model: `model/${entry}`, core: 'live2dcubismcore.min.js', motions: sample.motions };
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ id, width: sample.width, height: sample.height, live2d }, null, 2));
+  console.log(`${id}: ${out}`);
 }
 
 const args = process.argv.slice(2);
 const outAt = args.indexOf('--out');
 const root = outAt >= 0 ? args[outAt + 1] : join(settingsDir(), 'pets');
 if (!root) throw new Error('--out needs a folder');
-const known = [...Object.keys(PETS), 'shenshen', 'airi', 'hiyori'];
+const known = [...Object.keys(PETS), 'shenshen', 'airi', 'hiyori', ...Object.keys(L2D_SAMPLES)];
 const wanted = args.filter((a, i) => known.includes(a) && i !== outAt + 1);
 for (const id of wanted.length > 0 ? wanted : known) {
   if (id === 'shenshen') await importShenshen(root);
   else if (id === 'airi') await importAiri(root);
   else if (id === 'hiyori') await importHiyori(root);
+  else if (id in L2D_SAMPLES) await importSample(id, root);
   else await importPngPet(id, root);
 }

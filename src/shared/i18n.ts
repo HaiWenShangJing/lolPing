@@ -163,7 +163,7 @@ interface MateAskText {
   /** The hint in the box a double tap on a pet opens. */
   chatHint: string;
   /** What each pet is called in a bubble's header and in the lounge, and "to everyone". */
-  petName: { whale: string; naiwa: string; shenshen: string; airi: string; hiyori: string };
+  petName: { whale: string; naiwa: string; shenshen: string; airi: string; hiyori: string; haru: string; mao: string; rice: string; senko: string; mark: string };
   everyone: string;
   /** The pet lounge window: its title, the hint of its box, the Send button, what it says while no pet is out, what the user's lines are called, and what a note says. */
   loungeTitle: string;
@@ -243,7 +243,10 @@ const enMateAsk: MateAskText = {
   hostGaveUp: 'Hosting keeps failing, so I’m stopping. Turn it off and on in Settings → Pets to try again.',
   chatOff: 'To chat with me, turn on “AI roams the pets” and choose Copilot CLI hosting in Settings → Pets.',
   chatHint: 'Say something… (Enter to send)',
-  petName: { whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori' },
+  petName: {
+    whale: 'Whale girl', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao',
+        rice: 'Rice', senko: 'Senko', mark: 'Mark',
+  },
   everyone: 'everyone',
   loungeTitle: 'Pet lounge',
   loungeHint: 'Say something to the pets… (Enter to send)',
@@ -451,8 +454,8 @@ const enMateSettings = {
   petNaiwa: 'Naiwa',
   petShenshen: 'Shenshen',
   petAiri: 'Airi',
-  petHiyori: 'Hiyori (Live2D)',
-  petHiyoriDesc: 'A Live2D character that follows your pointer with her eyes and speaks when the teammate answers. Her files are downloaded separately (see Desktop pets in the README), so she only appears once they are in place.',
+  petLive2d: (name: string) => `${name} (Live2D)`,
+  petLive2dDesc: 'A Live2D character that follows your pointer with its eyes and speaks when the teammate answers. The files are downloaded separately (see Desktop pets in the README), so it only appears once they are in place. Uses sample data owned and copyrighted by Live2D Inc.',
   petLife: 'Idle life',
   petLifeDesc: 'Resting pets now and then play one of their animations and turn to look at your pointer.',
   petAgents: 'Let agents drive the pets',
@@ -1392,7 +1395,10 @@ const zh: Strings = {
       hostGaveUp: '托管一直失败，我先停下了。在“设置 → 桌宠”里关掉再打开就能重试。',
       chatOff: '想和我聊天，请在“设置 → 桌宠”里打开“让 AI 带桌宠溜达”，并选择 Copilot CLI 托管。',
       chatHint: '说点什么…（回车发送）',
-      petName: { whale: '鲸鱼娘', naiwa: '奶蛙', shenshen: '深深', airi: 'Airi', hiyori: '日和' },
+      petName: {
+        whale: '鲸鱼娘', naiwa: '奶蛙', shenshen: '深深', airi: 'Airi', hiyori: '日和', haru: 'Haru', mao: 'Mao',
+        rice: 'Rice', senko: '仙狐', mark: 'Mark',
+      },
       everyone: '大家',
       loungeTitle: '桌宠聊天室',
       loungeHint: '对桌宠们说点什么…（回车发送）',
@@ -1595,8 +1601,8 @@ const zh: Strings = {
       petNaiwa: '奶蛙',
       petShenshen: '深深',
       petAiri: 'Airi',
-      petHiyori: '日和（Live2D）',
-      petHiyoriDesc: 'Live2D 角色，眼睛会跟着你的鼠标转，队友回答时还会开口说话。她的文件需要另行下载（见 README 的“桌宠”一节），放好之后才会出现。',
+      petLive2d: (name) => `${name}（Live2D）`,
+      petLive2dDesc: 'Live2D 角色，眼睛会跟着你的鼠标转，队友回答时还会开口说话。文件需要另行下载（见 README 的“桌宠”一节），放好之后才会出现。使用 Live2D Inc. 拥有版权的示例数据。',
       petLife: '待机小动作',
       petLifeDesc: '待机的桌宠偶尔会做个小动作，并转头看向你的鼠标。',
       petAgents: '允许代理驱动桌宠',

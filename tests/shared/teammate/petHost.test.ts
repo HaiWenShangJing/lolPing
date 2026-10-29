@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PET_IDS } from '../../../src/shared/teammate/pet';
 import type { PetStatus } from '../../../src/shared/teammate/petControl';
 import {
   CHAT_SIZE, DOUBLE_TAP_MS, FALLBACK_HOST_MODELS, HOST_CALLS_MAX, HOST_REST, HOST_SERVER, HOST_TOOLS, TAP_MAX_MOVE, TAP_MAX_MS,
@@ -110,9 +111,9 @@ describe('tools', () => {
 
   it('lets a pet speak to another pet or everyone, and walk beside another', () => {
     const props = (name: string) => (hostToolDefs('normal').find((d) => d.name === name)?.parameters as { properties: Record<string, { enum?: string[] }> }).properties;
-    expect(props('pet_say').to.enum).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori', 'all']);
-    expect(props('pet_walk').beside.enum).toEqual(['whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
-    expect(props('pet_remember').about.enum).toEqual(['user', 'whale', 'naiwa', 'shenshen', 'airi', 'hiyori']);
+    expect(props('pet_say').to.enum).toEqual([...PET_IDS, 'all']);
+    expect(props('pet_walk').beside.enum).toEqual([...PET_IDS]);
+    expect(props('pet_remember').about.enum).toEqual(['user', ...PET_IDS]);
   });
 });
 

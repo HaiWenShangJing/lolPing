@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { PetId } from '../../../src/shared/teammate/pet';
+import { PET_IDS, type PetId } from '../../../src/shared/teammate/pet';
 import {
   CHIME, HEARD_MAX, QUIET_MS, ROOM_MAX, SOCIAL_DEPTH, SOCIAL_HOURLY, WAKES_PER_PET_LINE, contextRoom, depthAfter, heardBy, heardLine,
   isForMe, planWakes, pushLine, readingMs, wakeBudget, type RoomLine,
 } from '../../../src/shared/teammate/petSociety';
 
-const names: Record<PetId, string> = { whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori' };
+const names: Record<PetId, string> = {
+  whale: 'Whale', naiwa: 'Naiwa', shenshen: 'Shenshen', airi: 'Airi', hiyori: 'Hiyori', haru: 'Haru', mao: 'Mao', rice: 'Rice',
+  senko: 'Senko', mark: 'Mark',
+};
 const line = (seq: number, over: Partial<RoomLine> = {}): RoomLine => ({
   seq, room: 'main', from: 'airi', to: null, text: `line ${seq}`, at: 0, kind: 'say', ...over,
 });
@@ -175,7 +178,7 @@ describe('planWakes', () => {
   });
 
   it('wakes only a few pets for one line of a pet, and no more than the budget leaves', () => {
-    const all: PetId[] = ['whale', 'naiwa', 'shenshen', 'airi', 'hiyori'];
+    const all: PetId[] = [...PET_IDS];
     const crowd = planWakes({ ...base, from: 'whale', to: 'all', shown: all });
     expect(crowd).toHaveLength(WAKES_PER_PET_LINE);
     expect(planWakes({ ...base, from: 'whale', to: 'all', shown: all, budgetLeft: 1 })).toHaveLength(1);

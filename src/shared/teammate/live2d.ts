@@ -136,6 +136,12 @@ export const PERFORMANCES: Record<string, Performance> = {
 
 export const L2D_ANIMS: readonly string[] = Object.keys(PERFORMANCES);
 
+/** The animations a Live2D pet can rest in, the first being the default: every performance but the two poses. */
+export const L2D_RESTS: readonly string[] = [
+  'idle', 'sway', 'look', 'hum', 'giggle', 'shy', 'wink', 'celebrate', 'love', 'thanks', 'agree', 'confused',
+  'surprised', 'sad', 'angry', 'think', 'yawn', 'tired',
+];
+
 /** What a click on the character makes it do; the page picks one that isn't the last. */
 export const POKES: readonly string[] = ['giggle', 'shy', 'surprised', 'celebrate', 'wink'];
 /** How long a poke's reaction lasts before the character goes back to what it was doing. */
