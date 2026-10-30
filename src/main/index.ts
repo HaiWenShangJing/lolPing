@@ -432,6 +432,7 @@ function start(): void {
       },
       games: {
         openWerewolf: () => games().openWerewolf(),
+        openSanguosha: () => games().openSanguosha(),
         openMahjong: () => games().openMahjong(),
         startFight: () => startFight(),
       },
@@ -1405,6 +1406,7 @@ function start(): void {
       openPetLounge: () => openLounge(),
       openPetGame: (game) => {
         if (game === 'werewolf') games().openWerewolf();
+        else if (game === 'sanguosha') games().openSanguosha();
         else if (game === 'mahjong') games().openMahjong();
         else startFight();
       },

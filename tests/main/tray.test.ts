@@ -62,7 +62,7 @@ import { strings } from '../../src/shared/i18n';
 const room = { joinClipboard: vi.fn(), create: vi.fn(), copyCode: vi.fn(), setMuted: vi.fn(), leave: vi.fn(), openSettings: vi.fn() };
 const update = { check: vi.fn(), start: vi.fn() };
 const teammate = { stop: vi.fn(), openHistory: vi.fn(), setHistoryPaused: vi.fn(), openLounge: vi.fn() };
-const games = { openWerewolf: vi.fn(), openMahjong: vi.fn(), startFight: vi.fn() };
+const games = { openWerewolf: vi.fn(), openSanguosha: vi.fn(), openMahjong: vi.fn(), startFight: vi.fn() };
 const handlers = {
   openSettings: vi.fn(), setEnabled: vi.fn(), retryHelper: vi.fn(), quit: vi.fn(), room, update, teammate, games,
 };
@@ -188,11 +188,13 @@ describe('AppTray', () => {
     const tray = new AppTray('icon.png', handlers);
     tray.setTeammate(null);
     const sub = menuOf().find((i) => i.label === 'Pet games')!.submenu!;
-    expect(sub.map((i) => i.label)).toEqual(['Werewolf…', 'Mahjong…', 'Boxing match']);
+    expect(sub.map((i) => i.label)).toEqual(['Werewolf…', 'Sanguosha…', 'Mahjong…', 'Boxing match']);
     sub[0]!.click!({});
     sub[1]!.click!({});
     sub[2]!.click!({});
+    sub[3]!.click!({});
     expect(games.openWerewolf).toHaveBeenCalledTimes(1);
+    expect(games.openSanguosha).toHaveBeenCalledTimes(1);
     expect(games.openMahjong).toHaveBeenCalledTimes(1);
     expect(games.startFight).toHaveBeenCalledTimes(1);
   });

@@ -30,11 +30,11 @@ input:focus{border-color:var(--accent)}
   margin:0 auto;width:100%}
 #lobby h2{margin:0;font-size:20px}
 #lobby p{margin:0}
-#lMode{display:flex;gap:8px;flex-wrap:wrap}
-#lMode label{display:flex;align-items:center;padding:6px 14px;border:1px solid var(--line);border-radius:8px;
-  cursor:pointer;background:var(--field)}
-#lMode label.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-#lMode input{display:none}
+#lMode,#lSize{display:flex;gap:8px;flex-wrap:wrap}
+#lMode label,#lSize label{display:flex;align-items:center;padding:6px 14px;border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;background:var(--field)}
+#lMode label.on,#lSize label.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+#lMode input,#lSize input{display:none}
 #lGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 #lGrid label{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
   cursor:pointer;background:var(--field)}
@@ -48,6 +48,7 @@ const LOBBY = `<div id="lobby" hidden>
   <h2 id="lTitle"></h2>
   <p id="lRules" class="dim"></p>
   <div id="lMode" hidden></div>
+  <div id="lSize" hidden></div>
   <p id="lPick"></p>
   <div id="lGrid"></div>
   <p id="lMinds" class="dim"></p>
@@ -72,11 +73,11 @@ function showLobby(m,rest){
   $('lRules').textContent=m.text.rules||'';
   $('lMinds').textContent=m.minds?m.text.mindsOn:m.text.mindsOff;
   $('lStart').textContent=m.text.start;
-  const boxes=[],modes=[];
-  let play=true;
-  const cap=()=>play?m.seats:m.watchSeats;
+  const boxes=[],modes=[],sizes=[];
+  let play=true,size=m.sizes?m.sizes[0]:0;
+  const cap=()=>m.sizes?size-1:play?m.seats:m.watchSeats;
   const fresh=()=>{
-    $('lPick').textContent=(play?m.text.pickPlay:m.text.pickWatch)||m.text.pick||'';
+    $('lPick').textContent=((play?m.text.pickPlay:m.text.pickWatch)||m.text.pick||'').replace('{n}',cap());
     let n=boxes.filter(b=>b.checked).length;
     for(let i=boxes.length-1;i>=0&&n>cap();i--)if(boxes[i].checked){boxes[i].checked=false;n--}
     boxes.forEach(b=>{
@@ -84,6 +85,7 @@ function showLobby(m,rest){
       b.disabled=!b.checked&&n>=cap();
     });
     modes.forEach(r=>{r.parentElement.className=(r.value==='play')===play?'on':''});
+    sizes.forEach(r=>{r.parentElement.className=Number(r.value)===size?'on':''});
   };
   const both=m.text.modePlay&&m.text.modeWatch;
   $('lMode').hidden=!both;
@@ -92,6 +94,14 @@ function showLobby(m,rest){
     r.type='radio';r.name='mode';r.value=v;r.checked=(v==='play')===play;
     r.addEventListener('change',()=>{play=v==='play';fresh()});modes.push(r);
     l.append(r,el('span','',label));
+    return l;
+  }));
+  $('lSize').hidden=!m.sizes;
+  $('lSize').replaceChildren(...(m.sizes||[]).map(n=>{
+    const l=el('label'),r=document.createElement('input');
+    r.type='radio';r.name='size';r.value=n;r.checked=n===size;
+    r.addEventListener('change',()=>{size=n;fresh()});sizes.push(r);
+    l.append(r,el('span','',m.text['size_'+n]||String(n)));
     return l;
   }));
   let left=cap();
@@ -103,7 +113,10 @@ function showLobby(m,rest){
     return label;
   }));
   fresh();
-  $('lStart').onclick=()=>send({t:'start',pets:boxes.filter(b=>b.checked).map(b=>b.value),play});
+  $('lStart').onclick=()=>{
+    const pets=boxes.filter(b=>b.checked).map(b=>b.value);
+    send(m.sizes?{t:'start',pets,size}:{t:'start',pets,play});
+  };
 }
 `;
 

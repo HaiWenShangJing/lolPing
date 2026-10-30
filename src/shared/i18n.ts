@@ -4,6 +4,7 @@ import type { Platform } from './platform';
 import type { MemberPath } from './room';
 import type { AskFailure } from './teammate/askMachine';
 import type { ConnectAppId } from './teammate/connectApps';
+import { enSanguosha, zhSanguosha } from './teammate/sanguoshaWords';
 
 export type Lang = 'en' | 'zh-CN';
 /** The language setting: 'auto' follows the system display language. */
@@ -498,6 +499,8 @@ const enMateSettings = {
   petLoungeOpen: 'Open',
   petGameWerewolf: 'Play werewolf',
   petGameWerewolfDesc: 'Twelve players on the standard board: four wolves, four villagers, a seer, a witch, a hunter and an idiot. Play with eleven pets, or only watch twelve of them play. The pets think with Copilot CLI when it is set up, which uses its quota.',
+  petGameSanguosha: 'Play Sanguosha',
+  petGameSanguoshaDesc: 'An identity game for 5 or 8 players: a lord, loyalists, rebels and a traitor, with 25 heroes and a 102-card deck. You take a seat and the pets fill the others. They play by simple rules of their own, so no Copilot CLI quota is used. An unofficial fan game with its own rules text and no official art.',
   petGameMahjong: 'Mahjong scene',
   petGameMahjongDesc: 'Four pets sit around a mahjong table and play: shuffle, deal, throw, call, win. A little scene to watch, not a game you play.',
   petGameFight: 'Boxing match',
@@ -592,6 +595,7 @@ const enMateGames = {
   youLower: 'you',
   mindsOn: 'The pets think with Copilot CLI: each speech and each night move is a request to it, which uses its quota.',
   mindsOff: 'Copilot CLI is not set up, so the pets play by simple rules.',
+  sanguosha: enSanguosha,
   werewolf: {
     rules: 'Twelve players: four wolves, four villagers and four gods (seer, witch, hunter and idiot). The wolves kill one player each night. By day everybody talks, then votes one player out. The wolves win when every god or every villager is dead; the village wins when every wolf is out.',
     modePlay: 'I play',
@@ -1097,6 +1101,7 @@ const en = {
   trayMateLounge: 'Pet lounge…',
   trayGames: 'Pet games',
   trayGameWerewolf: 'Werewolf…',
+  trayGameSanguosha: 'Sanguosha…',
   trayGameMahjong: 'Mahjong…',
   trayGameFight: 'Boxing match',
   trayMatePauseHistory: 'Pause history',
@@ -1851,6 +1856,8 @@ const zh: Strings = {
       petLoungeOpen: '打开',
       petGameWerewolf: '玩狼人杀',
       petGameWerewolfDesc: '十二人标准局（预女猎白）：四只狼人、四个平民，再加预言家、女巫、猎人、白痴。你可以和十一只桌宠一起玩，也可以只看十二只桌宠自己玩。配置了 Copilot CLI 时，桌宠用它来思考，会消耗它的额度。',
+      petGameSanguosha: '玩三国杀',
+      petGameSanguoshaDesc: '5 人或 8 人的身份局：主公、忠臣、反贼、内奸，25 名武将、102 张牌。你坐一个位置，其余座位由桌宠补上。桌宠按自己的简单规则出牌，不使用 Copilot CLI，也不消耗额度。这是非官方的同人小游戏，规则文字自制，没有官方美术。',
       petGameMahjong: '麻将场景',
       petGameMahjongDesc: '几只桌宠围着麻将桌坐下打牌：洗牌、发牌、出牌、碰吃、胡牌。只是一个看着玩的小动画，不是真的打麻将。',
       petGameFight: '桌宠擂台赛',
@@ -1938,6 +1945,7 @@ const zh: Strings = {
       youLower: '你',
       mindsOn: '桌宠用 Copilot CLI 思考：每次发言和每个夜间行动都会向它发一次请求，会消耗它的额度。',
       mindsOff: '还没有配置 Copilot CLI，桌宠会按简单规则来玩。',
+      sanguosha: zhSanguosha,
       werewolf: {
         rules: '十二人标准局：四只狼人、四个平民，以及预言家、女巫、猎人、白痴四个神职。狼人每晚杀一个人；白天所有人轮流发言，然后投票放逐一个人。神职全部死亡或平民全部死亡，狼人获胜（屠边）；狼人全部出局，好人获胜。',
         modePlay: '我来玩',
@@ -2141,6 +2149,7 @@ const zh: Strings = {
   trayMateLounge: '桌宠聊天室…',
   trayGames: '桌宠游戏',
   trayGameWerewolf: '狼人杀…',
+  trayGameSanguosha: '三国杀…',
   trayGameMahjong: '麻将…',
   trayGameFight: '桌宠擂台赛',
   trayMatePauseHistory: '暂停历史',

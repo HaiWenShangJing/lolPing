@@ -34,7 +34,7 @@ export function lobbyChoices(on: readonly PetId[], names: Record<PetId, string>)
   return PET_IDS.map((id) => ({ id, name: names[id], color: PET_COLORS[id], on: on.includes(id) }));
 }
 
-const lobbyText = (g: GameWords, title: string): GameText => ({
+export const lobbyText = (g: GameWords, title: string): GameText => ({
   title, start: g.start, again: g.again, mindsOn: g.mindsOn, mindsOff: g.mindsOff,
 });
 

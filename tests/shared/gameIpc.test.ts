@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { PET_GAMES, isPetGame, parsePicks, parseWolfIn } from '../../src/shared/gameIpc';
+import { PET_GAMES, isPetGame, parsePicks, parseReply, parseSgsIn, parseWolfIn } from '../../src/shared/gameIpc';
 import { PET_IDS, type PetId } from '../../src/shared/teammate/pet';
+import { CARD_NAMES, DECK_SIZE } from '../../src/shared/teammate/sanguoshaCards';
+import { HERO_IDS, SKILLS } from '../../src/shared/teammate/sanguoshaHeroes';
 import { SEATS } from '../../src/shared/teammate/werewolf';
 
 const [a, b, c] = PET_IDS as readonly PetId[];
 const everyone: PetId[] = PET_IDS.slice(0, SEATS);
 
 describe('isPetGame', () => {
-  it('knows the three games', () => {
+  it('knows the four games', () => {
     expect(isPetGame('werewolf')).toBe(true);
+    expect(isPetGame('sanguosha')).toBe(true);
     expect(isPetGame('mahjong')).toBe(true);
     expect(isPetGame('fight')).toBe(true);
     expect(PET_GAMES.every(isPetGame)).toBe(true);
+    expect(PET_GAMES).toHaveLength(4);
   });
 
   it('refuses anything else', () => {
@@ -188,5 +192,158 @@ describe('parseWolfIn', () => {
     expect(parseWolfIn('start')).toBeNull();
     expect(parseWolfIn(42)).toBeNull();
     expect(parseWolfIn(true)).toBeNull();
+  });
+});
+
+describe('parseReply', () => {
+  const hero = HERO_IDS[0];
+  const skill = SKILLS[0];
+
+  it('reads each answer the Sanguosha table asks for', () => {
+    expect(parseReply({ k: 'hero', hero })).toEqual({ k: 'hero', hero });
+    expect(parseReply({ k: 'use', card: 7, as: 'sha', targets: [2] })).toEqual({
+      k: 'use', card: 7, as: 'sha', targets: [2],
+    });
+    expect(parseReply({ k: 'use', card: 7, as: 'tao', skill, targets: [] })).toEqual({
+      k: 'use', card: 7, as: 'tao', skill, targets: [],
+    });
+    expect(parseReply({ k: 'skill', skill, cards: [3, 4], targets: [1] })).toEqual({
+      k: 'skill', skill, cards: [3, 4], targets: [1],
+    });
+    expect(parseReply({ k: 'end' })).toEqual({ k: 'end' });
+    expect(parseReply({ k: 'cards', ids: [1, DECK_SIZE] })).toEqual({ k: 'cards', ids: [1, DECK_SIZE] });
+    expect(parseReply({ k: 'cards', ids: [] })).toEqual({ k: 'cards', ids: [] });
+    expect(parseReply({ k: 'area', zone: 'hand', card: null })).toEqual({ k: 'area', zone: 'hand', card: null });
+    expect(parseReply({ k: 'area', zone: 'equip', card: 9 })).toEqual({ k: 'area', zone: 'equip', card: 9 });
+    expect(parseReply({ k: 'area', zone: 'judge', card: 12 })).toEqual({ k: 'area', zone: 'judge', card: 12 });
+    expect(parseReply({ k: 'seat', seats: [0, 7] })).toEqual({ k: 'seat', seats: [0, 7] });
+    expect(parseReply({ k: 'confirm', yes: true })).toEqual({ k: 'confirm', yes: true });
+    expect(parseReply({ k: 'confirm', yes: false })).toEqual({ k: 'confirm', yes: false });
+  });
+
+  it('leaves the skill out of a card played as itself, which the table needs', () => {
+    const reply = parseReply({ k: 'use', card: 7, as: 'sha', targets: [2] });
+    expect(reply && 'skill' in reply).toBe(false);
+  });
+
+  it('knows every card, hero and skill there is and no other', () => {
+    for (const as of CARD_NAMES) expect(parseReply({ k: 'use', card: 1, as, targets: [] }), as).not.toBeNull();
+    for (const h of HERO_IDS) expect(parseReply({ k: 'hero', hero: h }), h).not.toBeNull();
+    for (const s of SKILLS) expect(parseReply({ k: 'skill', skill: s, cards: [], targets: [] }), s).not.toBeNull();
+    expect(parseReply({ k: 'use', card: 1, as: 'bomb', targets: [] })).toBeNull();
+    expect(parseReply({ k: 'use', card: 1, as: 'sha', skill: 'fly', targets: [] })).toBeNull();
+    expect(parseReply({ k: 'hero', hero: 'nobody' })).toBeNull();
+    expect(parseReply({ k: 'skill', skill: 'fly', cards: [], targets: [] })).toBeNull();
+  });
+
+  it('takes the cards of the deck, from the first to the last', () => {
+    expect(parseReply({ k: 'cards', ids: [1] })).not.toBeNull();
+    expect(parseReply({ k: 'cards', ids: [DECK_SIZE] })).not.toBeNull();
+    for (const id of [0, -1, DECK_SIZE + 1, 1.5, NaN, '3', null, undefined, {}, []]) {
+      expect(parseReply({ k: 'cards', ids: [id] }), String(id)).toBeNull();
+      expect(parseReply({ k: 'use', card: id, as: 'sha', targets: [] }), `use ${String(id)}`).toBeNull();
+      expect(parseReply({ k: 'skill', skill, cards: [id], targets: [] }), `skill ${String(id)}`).toBeNull();
+    }
+    expect(parseReply({ k: 'cards', ids: new Array<number>(DECK_SIZE + 1).fill(1) })).toBeNull();
+    expect(parseReply({ k: 'cards', ids: 3 })).toBeNull();
+    expect(parseReply({ k: 'cards' })).toBeNull();
+  });
+
+  it('takes the seats of the biggest table, from the first to the eighth', () => {
+    expect(parseReply({ k: 'seat', seats: [0, 1, 2, 3, 4, 5, 6, 7] })).not.toBeNull();
+    for (const seat of [-1, 8, 99, 0.5, NaN, Infinity, '1', null, undefined, true, []]) {
+      expect(parseReply({ k: 'seat', seats: [seat] }), String(seat)).toBeNull();
+      expect(parseReply({ k: 'use', card: 1, as: 'sha', targets: [seat] }), `use ${String(seat)}`).toBeNull();
+      expect(parseReply({ k: 'skill', skill, cards: [], targets: [seat] }), `skill ${String(seat)}`).toBeNull();
+    }
+    expect(parseReply({ k: 'seat', seats: [0, 1, 2, 3, 4, 5, 6, 7, 0] })).toBeNull();
+    expect(parseReply({ k: 'seat', seats: 2 })).toBeNull();
+    expect(parseReply({ k: 'seat' })).toBeNull();
+    expect(parseReply({ k: 'use', card: 1, as: 'sha' })).toBeNull();
+  });
+
+  it('refuses an area answer that names no zone of a player or a card that is not one', () => {
+    expect(parseReply({ k: 'area', zone: 'pile', card: 3 })).toBeNull();
+    expect(parseReply({ k: 'area', card: 3 })).toBeNull();
+    expect(parseReply({ k: 'area', zone: 'hand', card: 0 })).toBeNull();
+    expect(parseReply({ k: 'area', zone: 'hand', card: DECK_SIZE + 1 })).toBeNull();
+    expect(parseReply({ k: 'area', zone: 'hand', card: 'x' })).toBeNull();
+    expect(parseReply({ k: 'area', zone: 'hand' })).toEqual({ k: 'area', zone: 'hand', card: null });
+  });
+
+  it('refuses a confirmation that is not a yes or no', () => {
+    for (const yes of ['yes', 1, 0, null, undefined, []]) {
+      expect(parseReply({ k: 'confirm', yes }), String(yes)).toBeNull();
+    }
+  });
+
+  it('ignores whatever is not an answer', () => {
+    expect(parseReply({ k: 'pass' })).toBeNull();
+    expect(parseReply({ t: 'end' })).toBeNull();
+    expect(parseReply({})).toBeNull();
+    expect(parseReply(null)).toBeNull();
+    expect(parseReply(undefined)).toBeNull();
+    expect(parseReply([])).toBeNull();
+    expect(parseReply('end')).toBeNull();
+    expect(parseReply(7)).toBeNull();
+  });
+});
+
+describe('parseSgsIn', () => {
+  it('reads each message of the Sanguosha page', () => {
+    expect(parseSgsIn({ t: 'start', pets: [a, b], size: 5 })).toEqual({ t: 'start', pets: [a, b], size: 5 });
+    expect(parseSgsIn({ t: 'start', pets: [], size: 8 })).toEqual({ t: 'start', pets: [], size: 8 });
+    expect(parseSgsIn({ t: 'reply', reply: { k: 'end' } })).toEqual({ t: 'reply', reply: { k: 'end' } });
+    expect(parseSgsIn({ t: 'again' })).toEqual({ t: 'again' });
+  });
+
+  it('seats at most one pet fewer than the table, since the user takes a seat', () => {
+    expect(parseSgsIn({ t: 'start', pets: everyone, size: 5 })).toEqual({ t: 'start', pets: everyone.slice(0, 4), size: 5 });
+    expect(parseSgsIn({ t: 'start', pets: everyone, size: 8 })).toEqual({ t: 'start', pets: everyone.slice(0, 7), size: 8 });
+  });
+
+  it('seats nobody but the pets it names, and none twice', () => {
+    expect(parseSgsIn({ t: 'start', pets: [a, b, a, c], size: 5 })).toEqual({ t: 'start', pets: [a, b, c], size: 5 });
+    expect(parseSgsIn({ t: 'start', pets: ['nobody'], size: 5 })).toBeNull();
+    expect(parseSgsIn({ t: 'start', pets: a, size: 5 })).toBeNull();
+    expect(parseSgsIn({ t: 'start', size: 5 })).toBeNull();
+  });
+
+  it('plays only the sizes there are: five or eight', () => {
+    for (const size of [0, 1, 2, 3, 4, 6, 7, 9, 12, '5', null, undefined, 5.5, NaN]) {
+      expect(parseSgsIn({ t: 'start', pets: [], size }), String(size)).toBeNull();
+    }
+    expect(parseSgsIn({ t: 'start', pets: [] })).toBeNull();
+  });
+
+  it('passes on an answer only when it is one', () => {
+    expect(parseSgsIn({ t: 'reply', reply: { k: 'bomb' } })).toBeNull();
+    expect(parseSgsIn({ t: 'reply' })).toBeNull();
+    expect(parseSgsIn({ t: 'reply', reply: null })).toBeNull();
+    expect(parseSgsIn({ t: 'reply', reply: { k: 'confirm', yes: true } })).toEqual({
+      t: 'reply', reply: { k: 'confirm', yes: true },
+    });
+  });
+
+  it('reads the fields it needs and no others', () => {
+    expect(parseSgsIn({ t: 'again', size: 8, play: false })).toEqual({ t: 'again' });
+    expect(parseSgsIn({ t: 'start', pets: [a], size: 5, play: false })).toEqual({ t: 'start', pets: [a], size: 5 });
+  });
+
+  it('ignores whatever is not a message of the page, werewolf messages included', () => {
+    expect(parseSgsIn({ t: 'boom' })).toBeNull();
+    expect(parseSgsIn({ t: 'vote', seat: 2 })).toBeNull();
+    expect(parseSgsIn({ t: 'START', pets: [], size: 5 })).toBeNull();
+    expect(parseSgsIn({ kind: 'again' })).toBeNull();
+    expect(parseSgsIn({})).toBeNull();
+    expect(parseSgsIn(null)).toBeNull();
+    expect(parseSgsIn(undefined)).toBeNull();
+    expect(parseSgsIn([])).toBeNull();
+    expect(parseSgsIn('again')).toBeNull();
+    expect(parseSgsIn(5)).toBeNull();
+  });
+
+  it('is not fooled by a werewolf start that has no size', () => {
+    expect(parseSgsIn({ t: 'start', pets: [a], play: true })).toBeNull();
   });
 });
