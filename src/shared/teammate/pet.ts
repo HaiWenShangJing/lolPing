@@ -11,13 +11,16 @@ export type PetId = (typeof PET_IDS)[number];
 
 export const isPetId = (raw: unknown): raw is PetId => (PET_IDS as readonly unknown[]).includes(raw);
 
-/** The characters that are Live2D models: their files are downloaded, not part of the repository. */
+/**
+ * The characters that are Live2D models. Live2D Inc.'s sample models, and the Cubism Core every one of these loads, are
+ * downloaded rather than committed.
+ */
 export const LIVE2D_PETS: readonly PetId[] = [
   'hiyori', 'haru', 'mao', 'rice', 'senko', 'mark', 'laffey', 'unicorn', 'javelin', 'shoukaku',
 ];
 export const isLive2dPet = (id: PetId): boolean => LIVE2D_PETS.includes(id);
 
-/** The Live2D characters that are fan or game art, for personal use: they are never part of an installer you share. */
+/** The Live2D characters that are fan or game art, in lolPing with their authors' permission: their models are committed. */
 export const FAN_PETS: readonly PetId[] = ['senko', 'laffey', 'unicorn', 'javelin', 'shoukaku'];
 export const isFanPet = (id: PetId): boolean => FAN_PETS.includes(id);
 

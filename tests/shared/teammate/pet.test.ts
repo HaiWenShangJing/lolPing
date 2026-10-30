@@ -12,7 +12,7 @@ const pack = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('petIds', () => {
-  it('keeps the fan and game characters among the Live2D ones, which are never in a shared installer', () => {
+  it('keeps the fan and game characters among the Live2D ones', () => {
     for (const id of FAN_PETS) expect(LIVE2D_PETS).toContain(id);
     expect(FAN_PETS).toEqual(expect.arrayContaining(['senko', 'laffey', 'unicorn', 'javelin', 'shoukaku']));
   });

@@ -1,0 +1,10 @@
+{
+  "id": "javelin",
+  "width": 240,
+  "height": 320,
+  "live2d": {
+    "model": "model/biaoqiang_3.model3.json",
+    "core": "live2dcubismcore.min.js",
+    "motions": {}
+  }
+}

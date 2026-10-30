@@ -1,0 +1,10 @@
+{
+  "id": "senko",
+  "width": 240,
+  "height": 320,
+  "live2d": {
+    "model": "model/senko.model3.json",
+    "core": "live2dcubismcore.min.js",
+    "motions": {}
+  }
+}

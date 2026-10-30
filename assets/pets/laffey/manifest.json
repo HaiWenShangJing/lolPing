@@ -1,0 +1,10 @@
+{
+  "id": "laffey",
+  "width": 240,
+  "height": 320,
+  "live2d": {
+    "model": "model/lafei_4.model3.json",
+    "core": "live2dcubismcore.min.js",
+    "motions": {}
+  }
+}

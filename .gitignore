@@ -9,19 +9,14 @@ native/hook-helper/build/
 tools/extract-assets/.cache/
 tools/extract-assets/__pycache__/
 
-# Live2D Inc.'s sample models and Cubism Core are downloaded by tools/import-pets, never committed
+# Live2D Inc.'s sample models are downloaded by tools/import-pets, never committed
 assets/pets/hiyori/
 assets/pets/haru/
 assets/pets/mao/
 assets/pets/rice/
-assets/pets/senko/
 assets/pets/mark/
-assets/pets/laffey/
-assets/pets/unicorn/
-assets/pets/javelin/
-assets/pets/shoukaku/
-# Doubao's frames are drawn by tools/import-pets/doubao.mjs (an original mascot in Doubao's colours), never committed
-assets/pets/doubao/
+# Nor is the Cubism Core every Live2D pack loads: `node tools/import-pets/import.mjs core --out assets/pets` puts it next to the models
+assets/pets/*/live2dcubismcore.min.js
 # Maintainers' local notes: specs, plans and issue triage stay out of the repo
 .superpowers/
 docs/superpowers/

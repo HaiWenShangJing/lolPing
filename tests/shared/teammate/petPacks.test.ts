@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LIVE2D_PETS, parsePetManifest, PET_IDS, PET_POSES, PET_RESTS } from '../../../src/shared/teammate/pet';
+import { FAN_PETS, LIVE2D_PETS, parsePetManifest, PET_IDS, PET_POSES, PET_RESTS } from '../../../src/shared/teammate/pet';
 
 const root = join(__dirname, '..', '..', '..', 'assets', 'pets');
-// Live2D Inc.'s files and Doubao's frames can't be committed: such a pack is checked only where tools/import-pets has put it.
-const local = new Set<string>([...LIVE2D_PETS, 'doubao']);
+// Live2D Inc.'s sample models can't be committed: such a pack is checked only where tools/import-pets has put it. The fan and
+// game packs and Doubao are committed, so a checkout that lacks one fails here.
+const local = new Set<string>(LIVE2D_PETS.filter((id) => !FAN_PETS.includes(id)));
 const packs = PET_IDS.filter((id) => !local.has(id) || existsSync(join(root, id, 'manifest.json')));
 
 describe.each(packs)('bundled %s pack', (id) => {
@@ -24,9 +25,10 @@ describe.each(packs)('bundled %s pack', (id) => {
     expect(missing).toEqual([]);
   });
 
-  it('has the model and the core of a Live2D pack', () => {
-    const files = manifest?.live2d ? [manifest.live2d.model, manifest.live2d.core] : [];
-    expect(files.filter((f) => !existsSync(join(root, id, f)))).toEqual([]);
+  it('has the model of a Live2D pack, and names the Cubism Core that .gitignore keeps out of the repository', () => {
+    if (!manifest?.live2d) return;
+    expect(existsSync(join(root, id, manifest.live2d.model))).toBe(true);
+    expect(manifest.live2d.core).toBe('live2dcubismcore.min.js');
   });
 
   it('only names motions its model has, and carries none of Live2D\'s voice clips', () => {

@@ -1,0 +1,10 @@
+{
+  "id": "shoukaku",
+  "width": 240,
+  "height": 320,
+  "live2d": {
+    "model": "model/xianghe_2.model3.json",
+    "core": "live2dcubismcore.min.js",
+    "motions": {}
+  }
+}
