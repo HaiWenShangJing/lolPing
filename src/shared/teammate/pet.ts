@@ -51,7 +51,7 @@ export interface PetSetting {
 }
 export type PetsSetting = Record<PetId, PetSetting>;
 
-/** The animations a character can rest in (names in its pack), the first being the default. */
+/** The animations a character has that it could rest in (names in its pack), the first being the default. */
 export const PET_RESTS: Record<PetId, readonly string[]> = {
   whale: ['idle', 'walk', 'dance', 'flying', 'held'],
   naiwa: [
@@ -80,6 +80,24 @@ export const PET_RESTS: Record<PetId, readonly string[]> = {
   ],
 };
 
+/**
+ * The animations the settings offer a character to rest in, which are `PET_RESTS` but for a Live2D pack that maps motions
+ * of its own (see `Live2dPack`): that one offers `idle` and the animations it has a motion for. The rest of a Live2D
+ * pet's animations are a face and a sway over its idle loop, which at this size is hardly a change from resting, so
+ * choosing one looks like nothing happened. The pack tests hold these lists to the manifests.
+ */
+export const PET_REST_CHOICES: Record<PetId, readonly string[]> = {
+  ...PET_RESTS,
+  haru: ['idle', 'think', 'shy', 'thanks', 'angry'],
+  mao: ['idle', 'surprised', 'wink', 'thanks', 'celebrate', 'love', 'think'],
+  rice: ['idle', 'wink', 'giggle', 'celebrate'],
+  senko: ['idle', 'giggle', 'hum', 'tired'],
+  laffey: ['idle', 'giggle', 'wink', 'love', 'thanks', 'shy', 'celebrate', 'agree', 'think'],
+  unicorn: ['idle', 'giggle', 'surprised', 'love', 'confused', 'wink'],
+  javelin: ['idle', 'giggle', 'surprised', 'wink', 'celebrate', 'love', 'thanks', 'agree', 'think'],
+  shoukaku: ['idle', 'giggle', 'think', 'love', 'thanks', 'shy', 'agree', 'celebrate'],
+};
+
 export const DEFAULT_PETS: PetsSetting = {
   whale: { on: false, rest: PET_RESTS.whale[0], model: null, persona: '' },
   naiwa: { on: false, rest: PET_RESTS.naiwa[0], model: null, persona: '' },
@@ -106,7 +124,7 @@ export function normalizePets(raw: unknown): PetsSetting {
     const o = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
     return {
       on: o.on === true,
-      rest: typeof o.rest === 'string' && PET_RESTS[id].includes(o.rest) ? o.rest : DEFAULT_PETS[id].rest,
+      rest: typeof o.rest === 'string' && PET_REST_CHOICES[id].includes(o.rest) ? o.rest : DEFAULT_PETS[id].rest,
       model: modelId(o.model),
       persona: cleanLine(o.persona, PERSONA_MAX),
     };

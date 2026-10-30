@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { L2D_ANIMS } from '../../../src/shared/teammate/live2d';
 import {
-  FAN_PETS, LIVE2D_PETS, keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_RESTS, standBeside,
-  standLeftOf, stepToward,
+  FAN_PETS, LIVE2D_PETS, keepInside, normalizePets, parsePetManifest, petIds, PET_IDS, PET_POSES, PET_REST_CHOICES, PET_RESTS,
+  standBeside, standLeftOf, stepToward,
 } from '../../../src/shared/teammate/pet';
 
 const pack = (over: Record<string, unknown> = {}) => ({
@@ -63,15 +63,26 @@ describe('normalizePets', () => {
     const p = normalizePets({
       whale: { on: true, rest: 'dance' }, naiwa: { on: true, rest: 'dance' },
       shenshen: { on: true, rest: 'dance' }, airi: { on: true, rest: 'dance' }, hiyori: { on: true, rest: 'hum' },
-      haru: { on: true, rest: 'wink' }, mao: { on: true, rest: 'dance' },
+      haru: { on: true, rest: 'shy' }, mao: { on: true, rest: 'dance' },
     });
     expect(p.whale).toMatchObject({ on: true, rest: 'dance' });
     expect(p.naiwa).toMatchObject({ on: true, rest: 'sit' });
     expect(p.shenshen).toMatchObject({ on: true, rest: 'dance' });
     expect(p.airi).toMatchObject({ on: true, rest: 'idle' });
     expect(p.hiyori).toMatchObject({ on: true, rest: 'hum' });
-    expect(p.haru).toMatchObject({ on: true, rest: 'wink' });
+    expect(p.haru).toMatchObject({ on: true, rest: 'shy' });
     expect(p.mao).toMatchObject({ on: true, rest: 'idle' });
+  });
+
+  it('drops a resting animation a pack has no motion for, as the settings no longer offer it', () => {
+    const p = normalizePets({
+      laffey: { on: true, rest: 'love' }, unicorn: { on: true, rest: 'sad' }, haru: { on: true, rest: 'wink' },
+      hiyori: { on: true, rest: 'sad' },
+    });
+    expect(p.laffey.rest).toBe('love');
+    expect(p.unicorn.rest).toBe('idle');
+    expect(p.haru.rest).toBe('idle');
+    expect(p.hiyori.rest).toBe('sad');
   });
 
   it('only turns a character on for true', () => {
@@ -80,6 +91,13 @@ describe('normalizePets', () => {
 
   it('only offers resting animations a pack can have as a name', () => {
     for (const id of PET_IDS) for (const rest of PET_RESTS[id]) expect(rest).toMatch(/^[a-z0-9_]{1,32}$/);
+  });
+
+  it('offers a character\'s default first, and only animations it can rest in', () => {
+    for (const id of PET_IDS) {
+      expect(PET_REST_CHOICES[id][0], id).toBe(PET_RESTS[id][0]);
+      for (const rest of PET_REST_CHOICES[id]) expect(PET_RESTS[id], `${id} ${rest}`).toContain(rest);
+    }
   });
 });
 describe('parsePetManifest', () => {

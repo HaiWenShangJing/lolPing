@@ -14,7 +14,7 @@
 import { execFile } from 'node:child_process';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { ANIMS as DOUBAO_ANIMS, drawAnim } from './doubao.mjs';
 
@@ -321,21 +321,82 @@ const azurLane = (folder, title, who, extra = {}) => ({
   width: 240, height: 320, motions: {}, ...extra,
 });
 
+// A motion by its group and its place in the group, as a manifest names it. An animation a pack maps to none plays only
+// the face and gesture, over the model's idle loop. The maps below hold the motions that show on a character this size:
+// each is a pose of its own and keeps the character in view throughout. The login, home and main_3 motions of the models
+// are scene changes (the character vanishes and returns, the camera zooms), and some are all but still, so no
+// animation plays them. `PET_RESTS` in src/shared/teammate/pet.ts offers exactly the animations a pack maps, and a test
+// holds the two together.
+const m = (group, index = 0) => ({ group, index });
+
 const L2D_SAMPLES = {
-  haru: { dir: 'Haru', title: 'Haru', width: 180, height: 320, motions: {} },
-  mao: { dir: 'Mao', title: 'Mao', width: 230, height: 320, motions: {} },
-  rice: { dir: 'Rice', title: 'Rice', width: 300, height: 220, motions: {} },
+  haru: {
+    dir: 'Haru', title: 'Haru', width: 180, height: 320,
+    motions: { think: m('TapBody', 1), shy: m('TapBody', 2), thanks: m('TapBody', 3), angry: m('TapBody', 0) },
+  },
+  mao: {
+    dir: 'Mao', title: 'Mao', width: 230, height: 320,
+    motions: {
+      surprised: m('TapBody', 0), wink: m('TapBody', 1), thanks: m('TapBody', 2), celebrate: m('TapBody', 3),
+      love: m('TapBody', 4), think: m('TapBody', 5),
+    },
+  },
+  rice: {
+    dir: 'Rice', title: 'Rice', width: 300, height: 220,
+    motions: { wink: m('TapBody', 0), giggle: m('TapBody', 1), celebrate: m('TapBody', 2) },
+  },
   senko: {
     base: `${FAN_MODELS}/Live2D/Senko_Normals`, entry: 'senko.model3.json',
-    notice: fanNotice('Senko', 'Senko from "The Helpful Fox Senko-san"'), width: 240, height: 320, motions: {},
+    notice: fanNotice('Senko', 'Senko from "The Helpful Fox Senko-san"'), width: 240, height: 320,
+    motions: { giggle: m('Tap'), hum: m('Taphead', 0), tired: m('Taphead', 1) },
   },
+  // Only idle variants, which are expressions: its animations are the face and gesture, over its idle loop.
   mark: { dir: 'Mark', title: 'Mark', width: 220, height: 270, motions: {} },
-  laffey: azurLane('lafei_4', 'Laffey', 'Laffey'),
-  unicorn: azurLane('dujiaoshou_4', 'Unicorn', 'Unicorn'),
-  javelin: azurLane('biaoqiang_3', 'Javelin', 'Javelin'),
-  // Its model3.json names a physics file the collection does not have (the file is xianghe_2.physics3.json).
-  shoukaku: azurLane('xianghe_2', 'Shoukaku', 'Shoukaku', { physics: 'xianghe_2.physics3.json' }),
+  laffey: azurLane('lafei_4', 'Laffey', 'Laffey', {
+    named: true,
+    motions: {
+      giggle: m('touch_head'), wink: m('touch_special'), love: m('wedding'), thanks: m('complete'), shy: m('main_2'),
+      celebrate: m('mission_complete'), agree: m('mission'), think: m('main_1'),
+    },
+  }),
+  unicorn: azurLane('dujiaoshou_4', 'Unicorn', 'Unicorn', {
+    named: true,
+    motions: { giggle: m('touch_head'), surprised: m('touch_body'), love: m('wedding'), confused: m('main_1'), wink: m('mission') },
+  }),
+  javelin: azurLane('biaoqiang_3', 'Javelin', 'Javelin', {
+    named: true,
+    motions: {
+      giggle: m('touch_head'), surprised: m('mail'), wink: m('mission'), celebrate: m('mission_complete'), love: m('wedding'),
+      thanks: m('complete'), agree: m('main_1'), think: m('main_2'),
+    },
+  }),
+  // Its model3.json names a physics file the collection does not have (the file is xianghe_2.physics3.json). Its "Start"
+  // motion is a scene change that leaves the character in a dark pond, so no animation plays it.
+  shoukaku: azurLane('xianghe_2', 'Shoukaku', 'Shoukaku', {
+    physics: 'xianghe_2.physics3.json',
+    motions: {
+      giggle: m('TapTouchHead'), think: m('TapTouchBody', 5), love: m('TapTouchBody', 3), thanks: m('TapTouchBody', 0),
+      shy: m('TapTouchBody', 2), agree: m('TapTouchBody', 7), celebrate: m('TapTouchBody', 6),
+    },
+  }),
 };
+
+// The Azur Lane models list all their motions in one group with no name, which a manifest cannot point into by name. Each
+// motion gets a group of its own, named for its file, and the idle motion the group the model's idle loop plays from
+// (without one the character stands still); the few motions the lists repeat are kept once.
+function nameMotions(refs) {
+  const nameless = refs.Motions?.[''];
+  if (!nameless) return;
+  const groups = {};
+  for (const motion of nameless) {
+    const name = basename(motion.File, '.motion3.json');
+    const group = name === 'idle' ? 'Idle' : name;
+    if (!/^[A-Za-z0-9_@.-]{1,32}$/.test(group)) throw new Error(`motion ${motion.File} makes a group name the manifest cannot use`);
+    groups[group] ??= [];
+    if (!groups[group].some((e) => e.File === motion.File)) groups[group].push(motion);
+  }
+  refs.Motions = groups;
+}
 
 async function importSample(id, root) {
   const sample = L2D_SAMPLES[id];
@@ -343,6 +404,7 @@ async function importSample(id, root) {
   const entry = sample.entry ?? `${sample.dir}.model3.json`;
   const model = JSON.parse((await download(`${base}/${entry}`)).toString('utf8'));
   const refs = model.FileReferences;
+  if (sample.named) nameMotions(refs);
   // The voice clips some motions carry are Live2D's recordings, which are not licensed for use: leave them out.
   for (const list of Object.values(refs.Motions ?? {})) for (const m of list) delete m.Sound;
   if (sample.physics) refs.Physics = sample.physics;

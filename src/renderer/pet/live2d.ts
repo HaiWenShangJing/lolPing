@@ -1,6 +1,7 @@
 import { isTap, type PetApi, type PetInit, type PetLookMsg, type PetPoseMsg, type PetTalkMsg } from '../../shared/petIpc';
 import {
-  blinkFactor, faceOf, gestureAt, mouthAt, nextBlink, performanceFor, pickPoke, POKE_MS, stepBlend, walkAt, type Blend, type Param,
+  blinkFactor, faceOf, gestureAt, motionFor, mouthAt, nextBlink, performanceFor, pickPoke, POKE_MAX_MS, POKE_MS, reactCapMs,
+  stepBlend, walkAt, type Blend, type MotionRef, type Param,
 } from '../../shared/teammate/live2d';
 
 declare global {
@@ -27,8 +28,6 @@ const DRAG_PX = 4;
 const HIT_ALPHA = 12;
 /** The figure's height as a fraction of the window, leaving room above for it to hop. */
 const FIT = 0.94;
-/** How long a reaction motion plays before the character settles back into its idle loop, though the face stays. */
-const MOTION_CAP_MS = 4800;
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -96,7 +95,10 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
   let reacting = false;
   let reactUntil = 0;
   let pokeAnim: string | null = null;
+  let pokeStart = 0;
   let pokeUntil = 0;
+  /** What was commanded when the poke came: a new command ends the poke's run past `POKE_MS`. */
+  let pokeOver = '';
   let lastPoke: string | null = null;
   let talkAt = 0;
   let talkFor = 0;
@@ -114,26 +116,54 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
     api.hit({ over });
   };
 
+  const loops = pack.motions !== undefined;
+  const capMs = reactCapMs(pack);
+
+  /** A reaction (not the idle loop) is playing or about to: the model starts its own idle motions at priority IDLE. */
+  const reactionLive = (): boolean => {
+    const s = internal.motionManager.state;
+    return s.currentPriority > MotionPriority.IDLE || s.reservePriority > MotionPriority.IDLE;
+  };
+
+  const play = (motion: MotionRef): void => {
+    reacting = true;
+    // A motion that does not start must not be tried again every frame.
+    const failed = (): void => {
+      if (!reactionLive()) reacting = false;
+    };
+    void model.motion(motion.group, motion.index, MotionPriority.FORCE).then((started) => { if (!started) failed(); }, failed);
+  };
+
   const begin = (name: string, now: number): void => {
     effective = name;
     effectiveAt = now;
-    const motion = pack.motions ? (pack.motions[name] ?? null) : performanceFor(name).motion;
+    const motion = motionFor(pack, name);
     if (motion) {
-      void model.motion(motion.group, motion.index, MotionPriority.FORCE);
-      reacting = true;
-      reactUntil = now + MOTION_CAP_MS;
+      play(motion);
+      reactUntil = now + capMs;
     } else if (reacting) {
       internal.motionManager.stopAllMotions();
       reacting = false;
     }
   };
 
+  /** A poke plays on past `POKE_MS` while its own motion does, as long as nothing else has been commanded. */
+  const pokePlaying = (now: number): boolean =>
+    loops && reacting && effective === pokeAnim && commanded === pokeOver && now < pokeStart + POKE_MAX_MS && reactionLive();
+
   internal.on('beforeModelUpdate', () => {
     const now = performance.now();
     const dt = now - lastFrame;
     lastFrame = now;
-    const want = pokeAnim !== null && now < pokeUntil ? pokeAnim : commanded;
+    const poke = pokeAnim !== null && (now < pokeUntil || pokePlaying(now)) ? pokeAnim : null;
+    const want = poke ?? commanded;
     if (want !== effective) begin(want, now);
+    else if (loops && reacting && !reactionLive()) {
+      // The motion has played through: a rest or a cue starts it over, a poke is done.
+      reacting = false;
+      const again = poke === null ? motionFor(pack, want) : null;
+      if (again) play(again);
+    }
     if (reacting && now >= reactUntil && effective !== 'think') {
       internal.motionManager.stopAllMotions();
       reacting = false;
@@ -207,7 +237,9 @@ export async function startLive2d(init: PetInit, api: Pick<PetApi, 'drag' | 'hit
     } else if (!cancelled && commanded !== 'walk' && commanded !== 'held' && !commanded.startsWith('fight-')) {
       lastPoke = pickPoke(lastPoke, Math.random);
       pokeAnim = lastPoke;
-      pokeUntil = performance.now() + POKE_MS;
+      pokeStart = performance.now();
+      pokeUntil = pokeStart + POKE_MS;
+      pokeOver = commanded;
       // A drag only starts once the pointer has moved, so a tap is told to the main process as a press and release in one place.
       if (isTap(e.screenX - x, e.screenY - y, performance.now() - at)) {
         api.drag({ phase: 'start', x, y });

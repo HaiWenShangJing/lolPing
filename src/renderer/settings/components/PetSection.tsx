@@ -1,7 +1,7 @@
 import { Button, Combobox, Dropdown, Option, Textarea } from '@fluentui/react-components';
 import { ArrowClockwise20Regular, Brain24Regular, Chat24Regular, Emoji24Regular, Games24Regular } from '@fluentui/react-icons';
 import { Fragment, useEffect, useState } from 'react';
-import { PET_IDS, PET_RESTS, isFanPet, isLive2dPet, type PetId, type PetSetting } from '../../../shared/teammate/pet';
+import { PET_IDS, PET_REST_CHOICES, isFanPet, isLive2dPet, type PetId, type PetSetting } from '../../../shared/teammate/pet';
 import {
   HOST_ACTIVITIES, ROAM_KINDS, hostModel, type HostModel, type HostModelList,
 } from '../../../shared/teammate/petHost';
@@ -267,10 +267,10 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
                 disabled={!pet.on} listbox={{ style: { maxHeight: 240 } }}
                 positioning={{ position: 'above', align: 'end', autoSize: 'height', fallbackPositions: ['below-end'] }}
                 onOptionSelect={(_, d) => {
-                  const rest = PET_RESTS[id].find((r) => r === d.optionValue);
+                  const rest = PET_REST_CHOICES[id].find((r) => r === d.optionValue);
                   if (rest) setPet({ rest });
                 }}>
-                {PET_RESTS[id].map((r) => <Option key={r} value={r} text={m.petAnims[r] ?? r}>{m.petAnims[r] ?? r}</Option>)}
+                {PET_REST_CHOICES[id].map((r) => <Option key={r} value={r} text={m.petAnims[r] ?? r}>{m.petAnims[r] ?? r}</Option>)}
               </Dropdown>
             </SettingRow>
             {pet.on && hosting ? (

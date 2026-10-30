@@ -5,6 +5,19 @@
   "live2d": {
     "model": "model/senko.model3.json",
     "core": "live2dcubismcore.min.js",
-    "motions": {}
+    "motions": {
+      "giggle": {
+        "group": "Tap",
+        "index": 0
+      },
+      "hum": {
+        "group": "Taphead",
+        "index": 0
+      },
+      "tired": {
+        "group": "Taphead",
+        "index": 1
+      }
+    }
   }
 }

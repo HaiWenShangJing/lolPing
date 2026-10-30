@@ -5,6 +5,39 @@
   "live2d": {
     "model": "model/biaoqiang_3.model3.json",
     "core": "live2dcubismcore.min.js",
-    "motions": {}
+    "motions": {
+      "giggle": {
+        "group": "touch_head",
+        "index": 0
+      },
+      "surprised": {
+        "group": "mail",
+        "index": 0
+      },
+      "wink": {
+        "group": "mission",
+        "index": 0
+      },
+      "celebrate": {
+        "group": "mission_complete",
+        "index": 0
+      },
+      "love": {
+        "group": "wedding",
+        "index": 0
+      },
+      "thanks": {
+        "group": "complete",
+        "index": 0
+      },
+      "agree": {
+        "group": "main_1",
+        "index": 0
+      },
+      "think": {
+        "group": "main_2",
+        "index": 0
+      }
+    }
   }
 }

@@ -5,6 +5,35 @@
   "live2d": {
     "model": "model/xianghe_2.model3.json",
     "core": "live2dcubismcore.min.js",
-    "motions": {}
+    "motions": {
+      "giggle": {
+        "group": "TapTouchHead",
+        "index": 0
+      },
+      "think": {
+        "group": "TapTouchBody",
+        "index": 5
+      },
+      "love": {
+        "group": "TapTouchBody",
+        "index": 3
+      },
+      "thanks": {
+        "group": "TapTouchBody",
+        "index": 0
+      },
+      "shy": {
+        "group": "TapTouchBody",
+        "index": 2
+      },
+      "agree": {
+        "group": "TapTouchBody",
+        "index": 7
+      },
+      "celebrate": {
+        "group": "TapTouchBody",
+        "index": 6
+      }
+    }
   }
 }

@@ -5,6 +5,27 @@
   "live2d": {
     "model": "model/dujiaoshou_4.model3.json",
     "core": "live2dcubismcore.min.js",
-    "motions": {}
+    "motions": {
+      "giggle": {
+        "group": "touch_head",
+        "index": 0
+      },
+      "surprised": {
+        "group": "touch_body",
+        "index": 0
+      },
+      "love": {
+        "group": "wedding",
+        "index": 0
+      },
+      "confused": {
+        "group": "main_1",
+        "index": 0
+      },
+      "wink": {
+        "group": "mission",
+        "index": 0
+      }
+    }
   }
 }

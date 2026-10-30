@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BLEND_TAU_MS, blinkFactor, clampParam, faceOf, gazeToward, gestureAt, GAZE_REACH, L2D_ANIMS, L2D_RANGE, mouthAt, nextBlink, performanceFor,
-  PERFORMANCES, pickPoke, POKES, POKE_MS, stepBlend, talkMs, walkAt, type Gesture, type Param,
+  BLEND_TAU_MS, blinkFactor, clampParam, faceOf, gazeToward, gestureAt, GAZE_REACH, L2D_ANIMS, L2D_RANGE, motionFor, mouthAt, nextBlink,
+  performanceFor, PERFORMANCES, pickPoke, POKES, POKE_MAX_MS, POKE_MS, reactCapMs, stepBlend, talkMs, walkAt, type Gesture, type Param,
 } from '../../../src/shared/teammate/live2d';
 import { LIFE_ANIMS } from '../../../src/shared/teammate/life';
 import { MOOD_ANIMS } from '../../../src/shared/teammate/mood';
@@ -48,6 +48,35 @@ describe('PERFORMANCES', () => {
   it('plays an unknown animation as the idle', () => {
     expect(performanceFor('dance')).toBe(PERFORMANCES.idle);
     expect(performanceFor('think')).toBe(PERFORMANCES.think);
+  });
+});
+
+describe('motionFor', () => {
+  it('plays the Hiyori set\'s motion for a pack that names none', () => {
+    expect(performanceFor('celebrate').motion).not.toBeNull();
+    expect(motionFor({}, 'celebrate')).toBe(performanceFor('celebrate').motion);
+    expect(motionFor({}, 'idle')).toBeNull();
+  });
+
+  it('plays only the motions a pack that names some has named, and none for the other animations', () => {
+    const pack = { motions: { giggle: { group: 'touch_head', index: 0 } } };
+    expect(motionFor(pack, 'giggle')).toEqual({ group: 'touch_head', index: 0 });
+    expect(motionFor(pack, 'celebrate')).toBeNull();
+    expect(motionFor(pack, 'idle')).toBeNull();
+    expect(motionFor({ motions: {} }, 'celebrate')).toBeNull();
+  });
+});
+
+describe('reactCapMs', () => {
+  it('cuts the Hiyori set\'s motions short, and lets the ones a pack names play through', () => {
+    expect(reactCapMs({})).toBe(4800);
+    expect(reactCapMs({ motions: {} })).toBe(Infinity);
+    expect(reactCapMs({ motions: { giggle: { group: 'touch_head', index: 0 } } })).toBe(Infinity);
+  });
+
+  it('lets a poke run on past its own length, but only so far', () => {
+    expect(POKE_MAX_MS).toBeGreaterThan(POKE_MS);
+    expect(POKE_MAX_MS).toBeLessThanOrEqual(15000);
   });
 });
 

@@ -8,7 +8,7 @@ import * as PIXI from 'pixi.js';
 import type { Live2DModel } from 'pixi-live2d-display/cubism4';
 import type { ScenePet } from '../../shared/sceneIpc';
 import {
-  blinkFactor, faceOf, nextBlink, performanceFor, stepBlend, type Blend, type Param, type Slot as BlendSlot,
+  blinkFactor, faceOf, motionFor, nextBlink, performanceFor, reactCapMs, stepBlend, type Blend, type Param, type Slot as BlendSlot,
 } from '../../shared/teammate/live2d';
 import type { Live2dPack } from '../../shared/teammate/pet';
 import { spriteMove, type Cue } from '../../shared/teammate/sceneMotion';
@@ -37,8 +37,6 @@ export interface Actor {
   destroy(): void;
 }
 
-/** How long a reaction motion plays before the model settles back into its idle loop, though the face stays. */
-const MOTION_CAP_MS = 4800;
 /** How long a pet may take to load before its seat gets a plain figure instead. */
 const LOAD_MS = 25000;
 /** How long a pet takes to appear: a picture fades in, and a Live2D model, which cannot be faded, rises from behind the table. */
@@ -169,11 +167,11 @@ class Live2dActor implements Actor {
   private begin(name: string, now: number): void {
     this.effective = name;
     this.effectiveAt = now;
-    const motion = this.pack.motions ? (this.pack.motions[name] ?? null) : performanceFor(name).motion;
+    const motion = motionFor(this.pack, name);
     if (motion) {
       void this.model.motion(motion.group, motion.index, this.force);
       this.reacting = true;
-      this.reactUntil = now + MOTION_CAP_MS;
+      this.reactUntil = now + reactCapMs(this.pack);
     } else if (this.reacting) {
       this.internal.motionManager.stopAllMotions();
       this.reacting = false;

@@ -5,6 +5,39 @@
   "live2d": {
     "model": "model/lafei_4.model3.json",
     "core": "live2dcubismcore.min.js",
-    "motions": {}
+    "motions": {
+      "giggle": {
+        "group": "touch_head",
+        "index": 0
+      },
+      "wink": {
+        "group": "touch_special",
+        "index": 0
+      },
+      "love": {
+        "group": "wedding",
+        "index": 0
+      },
+      "thanks": {
+        "group": "complete",
+        "index": 0
+      },
+      "shy": {
+        "group": "main_2",
+        "index": 0
+      },
+      "celebrate": {
+        "group": "mission_complete",
+        "index": 0
+      },
+      "agree": {
+        "group": "mission",
+        "index": 0
+      },
+      "think": {
+        "group": "main_1",
+        "index": 0
+      }
+    }
   }
 }

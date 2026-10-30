@@ -149,6 +149,8 @@ export const L2D_RESTS: readonly string[] = [
 export const POKES: readonly string[] = ['giggle', 'shy', 'surprised', 'celebrate', 'wink'];
 /** How long a poke's reaction lasts before the character goes back to what it was doing. */
 export const POKE_MS = 2600;
+/** A pack with motions of its own lets a poke's motion play through, but not for longer than this. */
+export const POKE_MAX_MS = 9000;
 
 export function pickPoke(last: string | null, rand: () => number): string {
   const choices = POKES.filter((p) => p !== last);
@@ -161,6 +163,21 @@ export function pickPoke(last: string | null, rand: () => number): string {
  */
 export const performanceFor = (anim: string): Performance =>
   PERFORMANCES[anim] ?? FIGHT_PERFORMANCES[anim] ?? PERFORMANCES.idle;
+
+type MotionPack = { motions?: Record<string, MotionRef> };
+
+/**
+ * The model's own motion that plays for an animation: the one a pack names in its `motions` (an animation it leaves out
+ * plays none, only the face and gesture), or the Hiyori set's when the pack names none.
+ */
+export const motionFor = (pack: MotionPack, anim: string): MotionRef | null =>
+  pack.motions ? (pack.motions[anim] ?? null) : performanceFor(anim).motion;
+
+/**
+ * How long a reaction motion plays before the model is taken back to its idle loop, though the face stays. The Hiyori
+ * set's motions are cut short; the ones a pack names are there to be seen, so they play through.
+ */
+export const reactCapMs = (pack: MotionPack): number => (pack.motions ? Infinity : 4800);
 
 /** The face a performance holds: its own parameters, and its `eyes` on both eyes unless it sets one itself. */
 export function faceOf(perf: Performance): Face {
