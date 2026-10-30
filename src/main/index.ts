@@ -3,7 +3,7 @@ import {
 } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes, randomInt } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -75,6 +75,7 @@ import { PetLounge } from './teammate/petLounge';
 import { PetMinds } from './teammate/petMinds';
 import { PetSociety } from './teammate/petSociety';
 import { PetRoam } from './teammate/petRoam';
+import { syncPets } from './teammate/petInstall';
 import { PetWindows } from './teammate/petWindows';
 import { DEFAULT_PETS, PET_IDS } from '../shared/teammate/pet';
 import { forgetNote, personaOf } from '../shared/teammate/petMind';
@@ -253,11 +254,7 @@ function start(): void {
   let mate: Mate | null = null; // the teammate, while its feature is on
   const petsDir = join(settingsDir(), 'pets');
   const bundledPets = app.isPackaged ? join(process.resourcesPath, 'pets') : join(app.getAppPath(), 'assets', 'pets');
-  try {
-    for (const id of readdirSync(bundledPets)) {
-      if (!existsSync(join(petsDir, id, 'manifest.json'))) cpSync(join(bundledPets, id), join(petsDir, id), { recursive: true });
-    }
-  } catch { /* no bundled pets; the user folder may still have them */ }
+  syncPets(bundledPets, petsDir, app.getVersion(), { warn: (id, err) => console.warn('[pets]', id, err) });
   const pets = new PetWindows(petsDir);
   let mateFailed = false; // it couldn't start: its ask key stays off for this session
   /** The settings as the helper and overlays use them: without the teammate once it failed to start. */
