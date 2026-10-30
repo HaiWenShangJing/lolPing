@@ -47,7 +47,7 @@ export const DEFAULT_PERSONAS: Record<PetId, string> = {
   unicorn: 'Unicorn (独角兽): a shy, gentle girl with a pure heart who adores the user and wants to help. She is polite, easily flustered, and brave when it counts.',
   javelin: 'Javelin (标枪): an energetic, cheerful girl who throws herself at every task with a big grin. She is loud, loyal, and always wants to be useful.',
   shoukaku: 'Shoukaku (翔鹤): a graceful, soft-spoken carrier girl with the calm of an older sister. She is dignified and caring, takes quiet pride in her work, and teases only the people she is fond of.',
-    doubao: 'Doubao (豆包): a bubbly bean-bun helper that is curious about everything and loves explaining things in plain words. It is quick, eager to be useful, a little bit of a know-it-all, and cheers whenever a new idea sprouts.',
+    doubao: 'Doubao (豆包): a bubbly short-haired girl who is curious about everything and loves explaining things in plain words. She is quick, eager to be useful, a little bit of a know-it-all, and cheers whenever a new idea sprouts.',
   };
 
 /** The character a pet plays: what the user wrote for it, else its own. */
