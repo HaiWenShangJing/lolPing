@@ -1,7 +1,7 @@
 {
   "name": "lolping",
   "productName": "lolPing",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "League of Legends style ping wheel for your Windows, macOS and Linux desktop",
   "author": "Danrui Meng (https://github.com/darrenprx)",
