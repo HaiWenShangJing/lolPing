@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PET_IDS } from '../../../src/shared/teammate/pet';
 import type { PetStatus } from '../../../src/shared/teammate/petControl';
 import {
-  CHAT_SIZE, DOUBLE_TAP_MS, FALLBACK_HOST_MODELS, HOST_CALLS_MAX, HOST_REST, HOST_SERVER, HOST_TOOLS, TAP_MAX_MOVE, TAP_MAX_MS,
-  chatAt, clampRest, hostActivity, hostArgs, hostIntro, hostMcpConfig, hostModel, hostToolDefs, hostWake, isHostTool,
+  CHAT_SIZE, DOUBLE_TAP_MS, FALLBACK_HOST_MODELS, HOST_CALLS_MAX, HOST_REMIND, HOST_REST, HOST_SERVER, HOST_TOOLS, TAP_MAX_MOVE,
+  TAP_MAX_MS, chatAt, clampRest, hostActivity, hostArgs, hostIntro, hostMcpConfig, hostModel, hostToolDefs, hostWake, isHostTool,
   isTap, normalizeHostModels, parseHostModels, parseRest, pickHostAgent, restDelayMs, roamKind, type HostMoment, type HostWho,
 } from '../../../src/shared/teammate/petHost';
 import type { AgentProfile, Profile } from '../../../src/shared/teammate/settings';
@@ -156,6 +156,16 @@ describe('prompts', () => {
     expect(text).toContain('a sleepy frog');
     expect(text).toContain('first wake-up');
     expect(text).toContain('only pet showing');
+  });
+
+  it('keeps a character in the language of the user even when the character comes from another', () => {
+    const text = hostIntro({ language: 'Simplified Chinese', activity: 'normal', moment: moment(), who: who({ id: 'hiyori' }) });
+    expect(text).toContain('in Simplified Chinese (keep to that language even if your name or character is from another)');
+  });
+
+  it('reminds a mind that wrote words instead of using its tools, naming the tools', () => {
+    for (const tool of ['pet_say', 'pet_walk', 'pet_play', 'pet_rest']) expect(HOST_REMIND).toContain(tool);
+    expect(HOST_REMIND).toContain('write no answer text');
   });
 
   it('lists what the pet remembers, numbered, and the pets that are with it', () => {

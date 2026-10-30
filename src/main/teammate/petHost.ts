@@ -7,7 +7,7 @@ import type { BridgeContent } from '../../shared/teammate/bridgeProtocol';
 import type { PetId } from '../../shared/teammate/pet';
 import { parsePetCall, type SayTo } from '../../shared/teammate/petControl';
 import {
-  HOST_CALLS_MAX, HOST_IDLE_SECONDS, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, hostIntro, hostMcpConfig, hostToolDefs,
+  HOST_CALLS_MAX, HOST_IDLE_SECONDS, HOST_REMIND, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, hostIntro, hostMcpConfig, hostToolDefs,
   hostWake, isHostTool, parseRest, pickHostAgent, restDelayMs, type HostActivity, type HostHeard, type HostMoment,
   type HostWho, type WakeKind,
 } from '../../shared/teammate/petHost';
@@ -461,8 +461,13 @@ export class PetHost {
     live.fresh = false;
     live.calls = 0;
     live.rest = null;
-    await this.prompt(live, text);
+    const cut = await this.prompt(live, text);
     if (!this.alive(gen)) return 0;
+    if (live.calls === 0 && !cut) {
+      // A model sometimes answers in words before it remembers its tools: it gets one reminder before this is a failure.
+      await this.prompt(live, HOST_REMIND);
+      if (!this.alive(gen)) return 0;
+    }
     live.turns += 1;
     if (live.calls === 0) {
       throw new Failure(strings(this.deps.lang()).teammate.ask.hostSilent(this.deps.names().pet[this.deps.who]));
@@ -472,8 +477,8 @@ export class PetHost {
     return wait;
   }
 
-  /** The prompt goes in and the call returns when the agent has finished its turn; one that runs long is cancelled. */
-  private async prompt(live: Live, text: string): Promise<void> {
+  /** The prompt goes in and the call returns when the agent has finished its turn; one that runs long is cancelled, which is what is returned. */
+  private async prompt(live: Live, text: string): Promise<boolean> {
     const { client, sessionId } = live.session;
     const timers: (() => void)[] = [];
     let cancelled = false;
@@ -492,6 +497,7 @@ export class PetHost {
       live.ending = null;
       live.cancel = null;
     }
+    return cancelled;
   }
 
   /** The agent has rested, which ends its wake-up; it would go on calling tools, so the turn is cancelled in a moment. */

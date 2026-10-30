@@ -33,7 +33,8 @@ export function sanguoshaText(g: GameWords): GameText {
   const w = g.sanguosha;
   const text: GameText = {
     ...lobbyText(g, w.title),
-    mindsOff: w.bots,
+    mindsOn: w.minds,
+    thinking: w.thinking,
     rules: w.rules,
     pick: w.pick,
     size_5: w.size5,

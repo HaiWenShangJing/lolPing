@@ -1,5 +1,7 @@
-import { parseSgsIn, parseWolfIn, type SgsIn, type WolfIn } from '../../shared/gameIpc';
+import { parseDdzIn, parseSgsIn, parseWolfIn, type DdzIn, type SgsIn, type WolfIn } from '../../shared/gameIpc';
 import { SEATS } from '../../shared/teammate/werewolf';
+import { DoudizhuRoom } from './doudizhuRoom';
+import { DOUDIZHU_PAGE } from './doudizhuPage';
 import { GameWindow } from './gameWindow';
 import type { GameServices } from './gameServices';
 import { SanguoshaRoom } from './sanguoshaRoom';
@@ -14,11 +16,14 @@ export class GameCenter {
   private readonly wolf: WerewolfRoom;
   private readonly sgsWindow: GameWindow<SgsIn>;
   private readonly sgs: SanguoshaRoom;
+  private readonly ddzWindow: GameWindow<DdzIn>;
+  private readonly ddz: DoudizhuRoom;
   private readonly scenes: SceneWindow;
 
   constructor(services: GameServices) {
     this.wolf = new WerewolfRoom(services, (msg) => this.wolfWindow.post(msg));
     this.sgs = new SanguoshaRoom(services, (msg) => this.sgsWindow.post(msg));
+    this.ddz = new DoudizhuRoom(services, (msg) => this.ddzWindow.post(msg));
     this.scenes = new SceneWindow(services);
     this.wolfWindow = new GameWindow<WolfIn>({
       page: WEREWOLF_PAGE, title: () => services.words().g.werewolfTitle, width: 1040, height: 680,
@@ -30,6 +35,11 @@ export class GameCenter {
       parse: parseSgsIn, onReady: () => this.sgs.lobby(), onMessage: (m) => this.sgs.on(m),
       onClosed: () => this.sgs.stop(),
     });
+    this.ddzWindow = new GameWindow<DdzIn>({
+      page: DOUDIZHU_PAGE, title: () => services.words().g.doudizhu.title, width: 1180, height: 760,
+      parse: parseDdzIn, onReady: () => this.ddz.lobby(), onMessage: (m) => this.ddz.on(m),
+      onClosed: () => this.ddz.stop(),
+    });
   }
 
   openWerewolf(): void {
@@ -40,6 +50,10 @@ export class GameCenter {
     this.sgsWindow.open();
   }
 
+  openDoudizhu(): void {
+    this.ddzWindow.open();
+  }
+
   openMahjong(): void {
     this.scenes.open('mahjong');
   }
@@ -47,8 +61,10 @@ export class GameCenter {
   destroy(): void {
     this.wolf.stop();
     this.sgs.stop();
+    this.ddz.stop();
     this.wolfWindow.destroy();
     this.sgsWindow.destroy();
+    this.ddzWindow.destroy();
     this.scenes.destroy();
   }
 }

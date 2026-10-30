@@ -4,6 +4,7 @@ import { fillSeats, lobbyChoices } from '../../shared/teammate/gameText';
 import type { Engine } from '../../shared/teammate/sanguosha';
 import { Bots } from '../../shared/teammate/sanguoshaAi';
 import { shuffle } from '../../shared/teammate/sanguoshaCards';
+import { makeSgsMind } from '../../shared/teammate/sanguoshaMind';
 import { runSanguosha } from '../../shared/teammate/sanguoshaRun';
 import { ROLE_SETS, SIZES, Stopped, sideOf } from '../../shared/teammate/sanguoshaTypes';
 import type { Ask, Deps, Entry, Reply, Role, Size } from '../../shared/teammate/sanguoshaTypes';
@@ -11,6 +12,7 @@ import {
   askTitle, chatter, entryLines, moods, overText, sanguoshaText, type Voice,
 } from '../../shared/teammate/sanguoshaText';
 import { cardView, heroInfo, tableView } from '../../shared/teammate/sanguoshaView';
+import type { GameBrain } from './gameBrain';
 import type { GameServices } from './gameServices';
 
 const USER_COLOR = '#4a90e2';
@@ -57,6 +59,7 @@ export function askView(ask: Ask, e: Engine, title: string): SgsAsk {
 }
 
 interface Run {
+  brain: GameBrain | null;
   stopped: boolean;
   pending: { ask: Ask; view: SgsAsk; resolve: (reply: Reply | null) => void } | null;
   waits: Set<() => void>;
@@ -65,7 +68,8 @@ interface Run {
 /**
  * A game of Sanguosha in its window: the lobby, then a table of five or eight with the user in seat 0 and pets in the
  * rest, until a side has won. The page is shown what a player at the table can see; what it sends back answers the
- * question the table is waiting on.
+ * question the table is waiting on. A pet thinks with Copilot CLI when it is set up, and plays by the rules of its own
+ * whenever its mind has nothing legal to say.
  */
 export class SanguoshaRoom {
   private run: Run | null = null;
@@ -78,7 +82,7 @@ export class SanguoshaRoom {
     const pets = Math.min((SIZES[SIZES.length - 1] ?? 8) - 1, PET_IDS.length);
     this.post({
       kind: 'lobby', text: sanguoshaText(g), choices: lobbyChoices(this.s.petsOn(), names), seats: pets,
-      watchSeats: pets, minds: false, sizes: [...SIZES],
+      watchSeats: pets, minds: this.s.canThink(), sizes: [...SIZES],
     });
   }
 
@@ -114,10 +118,11 @@ export class SanguoshaRoom {
     run.pending?.resolve(null);
     run.pending = null;
     for (const release of [...run.waits]) release();
+    run.brain?.close();
   }
 
   private begin(picks: readonly PetId[], size: Size): void {
-    const { g, names } = this.s.words();
+    const { g, names, language } = this.s.words();
     const w = g.sanguosha;
     const random = (): number => this.s.random();
     const pets = fillSeats(picks, size - 1, random);
@@ -125,8 +130,10 @@ export class SanguoshaRoom {
     if (pets.length !== size - 1) return;
     const ids: ('user' | PetId)[] = ['user', ...pets];
     const roles = shuffle([...ROLE_SETS[size]], random);
-    const run: Run = { stopped: false, pending: null, waits: new Set() };
+    const brain = this.s.brain();
+    const run: Run = { brain, stopped: false, pending: null, waits: new Set() };
     this.run = run;
+    brain?.warm();
     const bots = new Bots(roles, random);
 
     const pet = (seat: number): PetId | null => {
@@ -139,6 +146,28 @@ export class SanguoshaRoom {
     };
     const voice: Voice = { who, whom: (seat) => (pet(seat) === null ? g.youLower : who(seat)) };
     const mineRole = roles[ME] as Role;
+
+    const busy = new Set<number>();
+    const mind = brain
+      ? makeSgsMind({
+        // Inside a prompt the user is not "You" but a person.
+        names: (seat) => {
+          const id = pet(seat);
+          return id === null ? 'the user' : names[id];
+        },
+        character: (seat) => {
+          const id = pet(seat);
+          return id === null ? { name: g.you, persona: '' } : { name: names[id], persona: this.s.persona(id) };
+        },
+        language,
+        ask: (seat, prompt) => brain.ask(seat, prompt),
+        think: (seat, on) => {
+          if (on) busy.add(seat);
+          else busy.delete(seat);
+          if (!run.stopped) this.post({ kind: 'thinking', seats: [...busy] });
+        },
+      })
+      : null;
 
     const state = (e: Engine): void => {
       const t = tableView(e, ME);
@@ -184,6 +213,7 @@ export class SanguoshaRoom {
     const emit = async (entry: Entry, e: Engine): Promise<void> => {
       if (run.stopped) return;
       bots.observe(entry, e);
+      mind?.observe(entry, e);
       state(e);
       if (entry.k === 'start') {
         line('secret', null, w.youAre(w.role[mineRole]));
@@ -201,8 +231,16 @@ export class SanguoshaRoom {
       if (ms > 0) await wait(ms);
     };
 
-    const ask = (seat: number, question: Ask, e: Engine): Promise<Reply | null> => {
-      if (seat !== ME) return Promise.resolve(bots.answer(seat, question, e));
+    const ask = async (seat: number, question: Ask, e: Engine): Promise<Reply | null> => {
+      if (seat !== ME) {
+        const thought = mind ? await mind.answer(seat, question, e) : null;
+        if (run.stopped) return null;
+        if (thought) {
+          if (thought.say !== null) line('say', seat, thought.say);
+          return thought.reply;
+        }
+        return bots.answer(seat, question, e);
+      }
       state(e);
       const view = askView(question, e, askTitle(question, w, voice, ME));
       this.post({ kind: 'ask', ask: view });
@@ -216,6 +254,8 @@ export class SanguoshaRoom {
       if (!(err instanceof Stopped) && !run.stopped) {
         line('sys', null, String(err instanceof Error ? err.message : err).slice(0, 200));
       }
+    }).finally(() => {
+      run.brain?.close();
     });
   }
 }

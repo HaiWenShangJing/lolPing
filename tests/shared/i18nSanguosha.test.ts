@@ -352,11 +352,13 @@ describe('the Sanguosha words', () => {
     }
   });
 
-  it('say that the pets play by rules of their own and use no Copilot CLI quota', () => {
-    expect(words('en').bots).toContain('Copilot CLI');
-    expect(words('en').bots).toMatch(/no quota/);
-    expect(words('zh-CN').bots).toContain('Copilot CLI');
-    expect(words('zh-CN').bots).toContain('额度');
+  it('say that the pets think with Copilot CLI, and that it uses its quota, in both languages', () => {
+    for (const lang of ['en', 'zh-CN'] as const) {
+      expect(words(lang).minds, lang).toContain('Copilot CLI');
+      expect(words(lang).thinking.trim(), lang).not.toBe('');
+    }
+    expect(words('en').minds).toMatch(/quota/);
+    expect(words('zh-CN').minds).toContain('额度');
   });
 });
 
@@ -379,14 +381,17 @@ describe('the Sanguosha entries of the settings and the tray', () => {
     }
   });
 
-  it('describe the game: 5 or 8 players, no Copilot CLI quota, unofficial', () => {
+  it('describe the game: 5 or 8 players, thinking with Copilot CLI when it is set up, unofficial', () => {
     const en = settings('en').petGameSanguoshaDesc;
     expect(en).toMatch(/5 or 8 players/);
-    expect(en).toMatch(/no Copilot CLI quota/);
+    expect(en).toMatch(/think with Copilot CLI when it is set up/);
+    expect(en).not.toMatch(/no Copilot CLI quota/);
     expect(en).toMatch(/unofficial/);
     const zh = settings('zh-CN').petGameSanguoshaDesc;
     expect(zh).toContain('5 人或 8 人');
-    expect(zh).toContain('不消耗额度');
+    expect(zh).toContain('Copilot CLI');
+    expect(zh).toContain('额度');
+    expect(zh).not.toContain('不消耗额度');
     expect(zh).toContain('非官方');
     for (const text of [en, zh]) {
       expect(text).toContain(String(HERO_IDS.length));

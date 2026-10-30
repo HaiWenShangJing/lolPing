@@ -41,6 +41,7 @@ export interface TrayHandlers {
   games: {
     openWerewolf(): void;
     openSanguosha(): void;
+    openDoudizhu(): void;
     openMahjong(): void;
     /** Puts on the pets' boxing match on the desktop. */
     startFight(): void;
@@ -205,6 +206,7 @@ export class AppTray {
       submenu: [
         { label: t.trayGameWerewolf, click: () => this.handlers.games.openWerewolf() },
         { label: t.trayGameSanguosha, click: () => this.handlers.games.openSanguosha() },
+        { label: t.trayGameDoudizhu, click: () => this.handlers.games.openDoudizhu() },
         { label: t.trayGameMahjong, click: () => this.handlers.games.openMahjong() },
         { label: t.trayGameFight, click: () => this.handlers.games.startFight() },
       ],

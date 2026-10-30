@@ -337,7 +337,8 @@ export function hostIntro(o: {
     + 'short sentence each, and not trivia; you read your notes again whenever you start. Drop one that is no longer true '
     + 'with pet_forget(number).',
     'Be alive, not noisy: vary what you do, never repeat yourself, and mostly do small things. '
-    + `A line is one short sentence of at most ${PET_SAY_MAX} characters in ${o.language}, friendly and in your own voice, `
+    + `A line is one short sentence of at most ${PET_SAY_MAX} characters in ${o.language} (keep to that language even if `
+    + 'your name or character is from another), friendly and in your own voice, '
     + 'and you never say you are an AI or talk about tools.',
     'You learn the time of day, how long ago the user last used the computer and where the pets are, never anything from '
     + 'their screen or files, and you must not claim to see them. When the user or a pet speaks to you, you get their words.',
@@ -357,6 +358,10 @@ export function hostWake(o: { moment: HostMoment; heard?: HostHeard }): string {
     ...(heard.length > 0 ? heard : ['Do something (or nothing), then pet_rest.']),
   ].join('\n');
 }
+
+/** Sent once, in the same session, to a mind whose wake-up ended with no tool call: it answered in words, and nobody sees those. */
+export const HOST_REMIND = 'You answered in words, and words are not seen: nothing has happened on screen. Do it with the '
+  + 'lolping-pets tools now (pet_say, pet_walk or pet_play), then end with pet_rest(seconds), and write no answer text.';
 
 export { DOUBLE_TAP_MS, TAP_MAX_MOVE, TAP_MAX_MS, isTap } from '../petIpc';
 

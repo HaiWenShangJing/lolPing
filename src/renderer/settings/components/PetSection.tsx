@@ -250,6 +250,9 @@ export function PetSection({ settings: s, update }: { settings: Settings; update
       <SettingRow icon={<Games24Regular />} title={m.petGameSanguosha} description={m.petGameSanguoshaDesc}>
         <Button onClick={() => void api.openPetGame('sanguosha')}>{m.petGameOpen}</Button>
       </SettingRow>
+      <SettingRow icon={<Games24Regular />} title={m.petGameDoudizhu} description={m.petGameDoudizhuDesc}>
+        <Button onClick={() => void api.openPetGame('doudizhu')}>{m.petGameOpen}</Button>
+      </SettingRow>
       <SettingRow icon={<Games24Regular />} title={m.petGameMahjong} description={m.petGameMahjongDesc}>
         <Button onClick={() => void api.openPetGame('mahjong')}>{m.petGameOpen}</Button>
       </SettingRow>

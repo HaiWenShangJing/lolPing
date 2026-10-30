@@ -6,6 +6,8 @@ import { newAcpSession } from './acp/session';
 export const ASK_MS = 30_000;
 /** After a cancel the agent has this long to end the turn before its process is stopped. */
 const CANCEL_GRACE_MS = 8_000;
+/** A seat's session is opened this many times before the seat is left to the rules for good. */
+const OPEN_TRIES = 3;
 
 export interface BrainDeps {
   /** Starts Copilot CLI with these arguments; `onText` hears every piece of text it says in any session. */
@@ -26,6 +28,10 @@ export interface BrainDeps {
 export class GameBrain {
   private agent: Promise<AcpSession | null> | null = null;
   private readonly sessions = new Map<number, Promise<string | null>>();
+  /** How many times each seat's session failed to open. */
+  private readonly failed = new Map<number, number>();
+  /** The session the agent started with has gone to a seat. */
+  private firstTaken = false;
   private readonly text = new Map<string, string>();
   private closed = false;
 
@@ -86,9 +92,25 @@ export class GameBrain {
     let made = this.sessions.get(seat);
     if (!made) {
       // The session the agent was started with is the first seat's; each other seat opens its own.
-      made = this.sessions.size === 0 ? Promise.resolve(agent.sessionId) : newAcpSession(agent.client, this.deps.cwd).catch(() => null);
+      if (this.firstTaken) {
+        made = this.open(agent, seat);
+      } else {
+        this.firstTaken = true;
+        made = Promise.resolve(agent.sessionId);
+      }
       this.sessions.set(seat, made);
     }
+    return made;
+  }
+
+  /** A seat whose session would not open is tried again at its next question, a few times, and then left to the rules. */
+  private open(agent: AcpSession, seat: number): Promise<string | null> {
+    const made: Promise<string | null> = newAcpSession(agent.client, this.deps.cwd).catch(() => {
+      const failed = (this.failed.get(seat) ?? 0) + 1;
+      this.failed.set(seat, failed);
+      if (failed < OPEN_TRIES && this.sessions.get(seat) === made) this.sessions.delete(seat);
+      return null;
+    });
     return made;
   }
 }

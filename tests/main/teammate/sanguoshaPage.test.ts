@@ -22,7 +22,7 @@ const namesOf = (lang: Lang) => strings(lang, 'win').teammate.ask.petName;
 type Words = Record<
   | 'again' | 'turnNo' | 'pile' | 'hand' | 'dist' | 'range' | 'out' | 'spectating' | 'waiting' | 'yourTurn' | 'endTurn'
   | 'ok' | 'cancel' | 'pass' | 'yes' | 'no' | 'pickTarget' | 'pickTargets' | 'pickCards' | 'playAs' | 'yourSkills'
-  | 'hiddenCard'
+  | 'hiddenCard' | 'thinking'
   | `card_${CardName}` | `tip_${CardName}` | `skill_${SkillId}` | `skillTip_${SkillId}` | `hero_${HeroId}`
   | `kingdom_${Kingdom}` | `role_${Role}` | `roleHint_${Role}` | `phase_${Phase}`,
   string
@@ -34,9 +34,9 @@ const W = g.sanguosha;
 const T = textOf('en');
 const fill = (text: string, n: number): string => text.replace('{n}', String(n));
 
-const lobbyOf = (lang: Lang = 'en', picked: readonly PetId[] = []): SgsOut => ({
+const lobbyOf = (lang: Lang = 'en', picked: readonly PetId[] = [], minds = false): SgsOut => ({
   kind: 'lobby', text: sanguoshaText(gamesOf(lang)), choices: lobbyChoices(picked, namesOf(lang)), seats: 7,
-  watchSeats: 7, minds: false, sizes: [5, 8],
+  watchSeats: 7, minds, sizes: [5, 8],
 });
 
 let deliver: (msg: SgsOut) => void = () => undefined;
@@ -145,8 +145,19 @@ describe('the Sanguosha page: the lobby', () => {
     expect(labels('#lSize label')).toEqual([W.size5, W.size8]);
     expect(all('#lSize input').map((r) => (r as HTMLInputElement).checked)).toEqual([true, false]);
     expect(all('#lGrid label')).toHaveLength(PET_IDS.length);
-    expect($('#lMinds').textContent).toBe(W.bots);
+    expect($('#lMinds').textContent).toBe(g.mindsOff);
     expect($('#lStart').textContent).toBe(g.start);
+  });
+
+  it('says in the lobby whether the pets think with Copilot CLI or play by simple rules, in both languages', () => {
+    for (const lang of LANGS) {
+      const words = gamesOf(lang);
+      deliver(lobbyOf(lang, [], true));
+      expect($('#lMinds').textContent).toBe(words.sanguosha.minds);
+      expect($('#lMinds').textContent).toContain('Copilot CLI');
+      deliver(lobbyOf(lang, [], false));
+      expect($('#lMinds').textContent).toBe(words.mindsOff);
+    }
   });
 
   it('says in the lobby that this is an unofficial version', () => {
@@ -204,7 +215,7 @@ describe('the Sanguosha page: the lobby', () => {
     expect(document.title).toBe(zh.title);
     expect(labels('#lSize label')).toEqual([zh.size5, zh.size8]);
     expect($('#lPick').textContent).toBe(fill(zh.pick, 4));
-    expect($('#lMinds').textContent).toBe(zh.bots);
+    expect($('#lMinds').textContent).toBe(gamesOf('zh-CN').mindsOff);
   });
 });
 
@@ -782,6 +793,70 @@ describe('the Sanguosha page: the other questions', () => {
     nth('#prompt .hero', 3).click();
     expect(sentReply()).toEqual({ k: 'hero', hero: 'lvbu' });
     expectWaiting();
+  });
+});
+
+describe('the Sanguosha page: the pets thinking', () => {
+  it('marks the seats whose pet is thinking, with a title that says so, and unmarks them when it is done', () => {
+    deliver(state(table(), { turn: 2 }));
+    expect(marked('busy')).toEqual([]);
+    deliver({ kind: 'thinking', seats: [2] });
+    expect(marked('busy')).toEqual([2]);
+    expect(oppSeat(2).title).toBe(T.thinking);
+    expect(oppSeat(3).title).toBe('');
+    expect(oppSeat(2).querySelector('.dots')?.textContent).toBe('…');
+    deliver({ kind: 'thinking', seats: [2, 4] });
+    expect(marked('busy')).toEqual([2, 4]);
+    deliver({ kind: 'thinking', seats: [] });
+    expect(marked('busy')).toEqual([]);
+    expect(oppSeat(2).title).toBe('');
+  });
+
+  it('keeps the mark of whose turn it is on a seat that is thinking', () => {
+    deliver(state(table(), { turn: 2 }));
+    deliver({ kind: 'thinking', seats: [2] });
+    expect(marked('turn')).toEqual([2]);
+    expect(marked('busy')).toEqual([2]);
+  });
+
+  it('says it in the language it is sent', () => {
+    for (const lang of LANGS) {
+      deliver(lobbyOf(lang));
+      deliver(state(table()));
+      deliver({ kind: 'thinking', seats: [1] });
+      expect(oppSeat(1).title).toBe(textOf(lang).thinking);
+      expect(oppSeat(1).title).not.toBe('');
+    }
+    expect(textOf('en').thinking).not.toBe(textOf('zh-CN').thinking);
+  });
+
+  it('stays on the seat through the table’s new states, and goes with the next lobby', () => {
+    deliver(state(table()));
+    deliver({ kind: 'thinking', seats: [3] });
+    deliver(state(table(), { turns: 4 }));
+    expect(marked('busy')).toEqual([3]);
+    deliver(lobbyOf());
+    deliver(state(table()));
+    expect(marked('busy')).toEqual([]);
+  });
+
+  it('leaves the question the user is answering as it was', () => {
+    deliver(state(table(), { hand: HAND }));
+    deliver(playAsk());
+    handCard(4).click();
+    const before = labels('#prompt button');
+    deliver({ kind: 'thinking', seats: [2] });
+    expect(labels('#prompt .q')).toEqual(['Your move.']);
+    expect(labels('#prompt button')).toEqual(before);
+    expect(handClasses().filter((s) => s === 'sel')).toHaveLength(1);
+  });
+
+  it('has the dots on every seat but shows them only for a seat that is thinking', () => {
+    deliver(state(table()));
+    expect(all('.seat .dots').length).toBeGreaterThan(0);
+    expect(all('.seat.busy .dots')).toHaveLength(0);
+    deliver({ kind: 'thinking', seats: [3] });
+    expect(all('.seat.busy .dots')).toHaveLength(1);
   });
 });
 

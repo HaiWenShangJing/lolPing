@@ -1,14 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { GameBrain } from '../../../src/main/teammate/gameBrain';
 import { SanguoshaRoom, askView, fits, pace } from '../../../src/main/teammate/sanguoshaRoom';
 import type { SgsAsk, SgsOut, SgsSeat } from '../../../src/shared/gameIpc';
 import { strings } from '../../../src/shared/i18n';
 import { PET_IDS, type PetId } from '../../../src/shared/teammate/pet';
 import { Engine } from '../../../src/shared/teammate/sanguosha';
 import { CARD_NAMES, type Card } from '../../../src/shared/teammate/sanguoshaCards';
-import { HEROES } from '../../../src/shared/teammate/sanguoshaHeroes';
+import { HERO_IDS, HEROES, type HeroId } from '../../../src/shared/teammate/sanguoshaHeroes';
+import { SGS_BUDGET } from '../../../src/shared/teammate/sanguoshaMind';
 import { ROLE_SETS, SIZES, sideOf } from '../../../src/shared/teammate/sanguoshaTypes';
 import type { Ask, Entry, Reply, Role, Size } from '../../../src/shared/teammate/sanguoshaTypes';
-import { fakeServices, tick } from './gameFakes';
+import { fakeBrain, fakeServices, tick } from './gameFakes';
 
 const en = strings('en', 'win').teammate;
 const zh = strings('zh-CN', 'win').teammate;
@@ -532,6 +534,280 @@ describe('SanguoshaRoom', () => {
       expect(mineIn(t.states()[0]?.seats)?.name).toBe(zh.games.you);
       expect(t.last('over')?.title).toMatch(/[\u4e00-\u9fff]/);
     });
+  });
+});
+
+/** A stand-in for a model: it reads the question as it is written and answers with the first thing offered. */
+function model(text: string): string {
+  if (text.includes('{"pick": <number>}')) return '{"pick": 1}';
+  if (text.includes('"plan"')) {
+    const lines = text.matchAll(/^\[(\d+)\] [^\n]*?: (?:no target|aim at \d+(?: to \d+)? of #(\d+))/gm);
+    const plan = [...lines].map((m) => (m[2] === undefined ? { card: Number(m[1]) } : { card: Number(m[1]), targets: [Number(m[2])] }));
+    return JSON.stringify({ plan, say: 'On we go.' });
+  }
+  const card = /Cards you may play: \[(\d+)\]/.exec(text)?.[1];
+  return JSON.stringify({ play: card === undefined ? [] : [Number(card)] });
+}
+
+/** A stand-in whose answers are well formed and none of them can be played. */
+function junk(text: string): string {
+  if (text.includes('{"pick": <number>}')) return '{"pick": 99}';
+  if (text.includes('"plan"')) return '{"plan": [{"card": 9999}], "say": "Hm."}';
+  return '{"play": [9999]}';
+}
+
+interface Prompt {
+  seat: number;
+  text: string;
+}
+
+/** A table whose pets think with `reply`, and every prompt they are given. */
+function minded(reply: (seat: number, text: string) => string | null = (_seat, text) => model(text), over: Over = {}) {
+  const prompts: Prompt[] = [];
+  const fb = fakeBrain((seat, text) => {
+    prompts.push({ seat, text });
+    return reply(seat, text);
+  });
+  const t = table({ canThink: () => true, brain: () => fb.brain, ...over });
+  return { t, fb, prompts };
+}
+
+/** A table whose brain holds the questions that `hold` picks until the test answers them, and answers the rest at once. */
+function slow(hold: (text: string) => boolean = () => true) {
+  const held: ((text: string | null) => void)[] = [];
+  const brain = {
+    warm: vi.fn(),
+    ask: vi.fn((_seat: number, text: string) => (hold(text)
+      ? new Promise<string | null>((resolve) => { held.push(resolve); })
+      : Promise.resolve<string | null>(model(text)))),
+    close: vi.fn(),
+  };
+  const t = table({ canThink: () => true, brain: () => brain as unknown as GameBrain });
+  return { t, held, brain };
+}
+
+const thinkingOf = (posts: readonly SgsOut[]): number[][] => only(posts, 'thinking').map((m) => m.seats);
+const withoutThinking = (posts: readonly SgsOut[]): SgsOut[] => posts.filter((m) => m.kind !== 'thinking');
+/** Turns the clock until every seat has its hero. */
+const heroesChosen = (t: Table): Promise<boolean> =>
+  t.play(() => (t.states().at(-1)?.seats ?? []).length > 0 && (t.states().at(-1)?.seats ?? []).every((s) => s.hero !== null), answerTo);
+
+describe('SanguoshaRoom with the pets thinking', () => {
+  it('tells the lobby whether they can', () => {
+    for (const can of [true, false]) {
+      const t = table({ canThink: () => can });
+      t.room.lobby();
+      expect(only(t.posts, 'lobby')[0]?.minds).toBe(can);
+    }
+  });
+
+  it('puts the questions of the pets to the brain, none of the user\'s, and warms it once a game', async () => {
+    for (const size of SIZES) {
+      const { t, fb, prompts } = minded(undefined, { seed: 2 });
+      t.start([], size);
+      expect(fb.warm).toHaveBeenCalledTimes(1);
+      expect(await t.finish(answerTo)).toBe(true);
+      expect(fb.warm).toHaveBeenCalledTimes(1);
+      expect(prompts.length).toBeGreaterThan(size);
+      expect(prompts.length).toBeLessThanOrEqual(SGS_BUDGET);
+      expect(new Set(prompts.map((p) => p.seat))).toEqual(new Set(Array.from({ length: size - 1 }, (_, i) => i + 1)));
+    }
+  });
+
+  it('asks no more than the budget of a game, whatever the table', async () => {
+    for (const size of SIZES) {
+      for (const seed of SEEDS) {
+        const { t, prompts } = minded(undefined, { seed });
+        t.start([], size);
+        expect(await t.finish(answerTo), `seed ${seed}`).toBe(true);
+        expect(prompts.length, `seed ${seed}`).toBeLessThanOrEqual(SGS_BUDGET);
+      }
+    }
+  }, 120_000);
+
+  it('has no pet thinking when there is no brain to think with', async () => {
+    const g = await playOut(3, 5);
+    expect(g.done).toBe(true);
+    expect(thinkingOf(g.posts)).toEqual([]);
+  });
+
+  it('seats each pet with the hero its mind chose', async () => {
+    const chose = new Map<number, HeroId>();
+    const { t } = minded((seat, text) => {
+      if (!text.includes('{"pick": <number>}')) return model(text);
+      const name = /^3\. (.+?) \(/m.exec(text)?.[1];
+      const hero = HERO_IDS.find((h) => w.hero[h] === name);
+      if (hero) chose.set(seat, hero);
+      return '{"pick": 3}';
+    }, { seed: 4 });
+    t.start([], 5);
+    expect(await heroesChosen(t)).toBe(true);
+    const seats = t.states().at(-1)?.seats ?? [];
+    expect([...chose.keys()].sort()).toEqual([1, 2, 3, 4]);
+    for (const [seat, hero] of chose) expect(seats[seat]?.hero, `seat ${seat}`).toBe(hero);
+    t.room.stop();
+  });
+
+  it('plays the plans of the minds, and lets the pets say what their plans said', async () => {
+    const rules = await playOut(5, 5);
+    const { t } = minded(undefined, { seed: 5 });
+    t.start(picksFor(5), 5);
+    expect(await t.finish(answerTo)).toBe(true);
+    expect(JSON.stringify(withoutThinking(t.posts))).not.toBe(JSON.stringify(rules.posts));
+    const said = t.lines().filter((l) => l.tone === 'say' && l.text === 'On we go.');
+    expect(said.length).toBeGreaterThan(0);
+    expect(said.every((l) => l.seat !== null && l.seat > 0)).toBe(true);
+  });
+
+  it('plays the rules\' game when the brain has nothing it can use: the same posts, but for the thinking', async () => {
+    const rules = await playOut(5, 5);
+    expect(rules.done).toBe(true);
+    const fails: [string, (seat: number, text: string) => string | null][] = [
+      ['no answer', () => null],
+      ['an answer that is no JSON', () => 'I would rather not say.'],
+      ['an answer that cannot be played', (_seat, text) => junk(text)],
+      ['a brain that breaks', () => { throw new Error('boom'); }],
+    ];
+    for (const [name, reply] of fails) {
+      const { t, prompts } = minded(reply, { seed: 5 });
+      t.start(picksFor(5), 5);
+      expect(await t.finish(answerTo), name).toBe(true);
+      expect(prompts.length, name).toBeGreaterThan(0);
+      expect(withoutThinking(t.posts), name).toEqual(rules.posts);
+    }
+  });
+
+  it('says which pet is thinking while it does, and that none is when it has answered', async () => {
+    for (const size of SIZES) {
+      const { t } = minded(undefined, { seed: 3 });
+      t.start([], size);
+      expect(await t.finish(answerTo)).toBe(true);
+      const seen = thinkingOf(t.posts);
+      expect(seen.length).toBeGreaterThan(size);
+      seen.forEach((seats, i) => {
+        if (i % 2 === 1) return expect(seats).toEqual([]);
+        expect(seats).toHaveLength(1);
+        expect(seats[0]).toBeGreaterThan(0);
+        expect(seats[0]).toBeLessThan(size);
+      });
+      expect(seen.at(-1)).toEqual([]);
+    }
+  });
+
+  it('plays every game to its end, the verdict last and no pet left thinking', async () => {
+    const bad: string[] = [];
+    for (const size of SIZES) {
+      for (const seed of SEEDS) {
+        const { t } = minded(undefined, { seed });
+        t.start(picksFor(seed), size);
+        const name = `seed ${seed} (${size} players)`;
+        if (!(await t.finish(answerTo))) {
+          bad.push(`${name}: it never ends`);
+          continue;
+        }
+        if (only(t.posts, 'over').length !== 1) bad.push(`${name}: not one verdict`);
+        if (t.posts.at(-1)?.kind !== 'over') bad.push(`${name}: ends with a ${t.posts.at(-1)?.kind}`);
+        if (thinkingOf(t.posts).at(-1)?.length !== 0) bad.push(`${name}: a pet is left thinking`);
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 120_000);
+
+  it('tells a pet only what its seat can know of the roles: its own, the lord\'s and the fallen\'s', async () => {
+    const roles = Object.values(w.role).join('|');
+    const seen = new RegExp(`^#(\\d+) [^,:\\n]+, (${roles})\\b`);
+    let checked = 0;
+    for (const size of SIZES) {
+      for (const seed of SEEDS) {
+        const { t, prompts } = minded(undefined, { seed });
+        t.start([], size);
+        expect(await t.finish(answerTo), `seed ${seed}`).toBe(true);
+        for (const p of prompts) {
+          for (const line of p.text.split('\n')) {
+            const m = seen.exec(line);
+            if (!m) continue;
+            checked += 1;
+            const open = Number(m[1]) - 1 === p.seat || m[2] === w.role.lord || line.endsWith('out of the game');
+            expect(open, `seed ${seed}, seat ${p.seat}: ${line}`).toBe(true);
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+  }, 120_000);
+
+  it('briefs each pet in the language of the user, as the character it is, and names the user for what he is', async () => {
+    for (const [strs, language] of [[en, 'English'], [zh, 'Simplified Chinese']] as const) {
+      const { t, prompts } = minded(undefined, { seed: 6, words: () => ({ g: strs.games, names: strs.ask.petName, language }) });
+      t.start(PET_IDS.slice(0, 4), 5);
+      expect(await t.finish(answerTo), language).toBe(true);
+      const seats = t.states().at(-1)?.seats ?? [];
+      const pets = seats.filter((s) => !s.me);
+      expect(pets).toHaveLength(4);
+      for (const s of pets) {
+        const first = prompts.find((p) => p.seat === s.seat)?.text ?? '';
+        expect(first, `${language} seat ${s.seat}`).toContain(`Speak in ${language}`);
+        expect(first).toContain(`Your character: the persona of ${s.id}`);
+        expect(first).toContain(`You are seat #${s.seat + 1}, ${strs.ask.petName[s.id as PetId]}`);
+      }
+      const plan = prompts.find((p) => p.text.includes('"plan"'));
+      expect(plan?.text).toContain('#1 the user');
+      expect(prompts.every((p) => !p.text.includes('#1 You'))).toBe(true);
+    }
+  });
+
+  it('lets the brain go when the game is over, and at once when it is stopped', async () => {
+    const over = minded();
+    over.t.start([], 5);
+    expect(over.fb.close).not.toHaveBeenCalled();
+    expect(await over.t.finish(answerTo)).toBe(true);
+    await tick();
+    expect(over.fb.close).toHaveBeenCalled();
+
+    const stopped = minded();
+    stopped.t.start([], 5);
+    await tick();
+    expect(stopped.fb.close).not.toHaveBeenCalled();
+    stopped.t.room.stop();
+    expect(stopped.fb.close).toHaveBeenCalled();
+  });
+
+  it('waits for a pet that is still thinking, and goes on with the answer it gets', async () => {
+    const { t, held } = slow();
+    t.start([], 5);
+    expect(await t.play(() => held.length > 0, answerTo)).toBe(true);
+    expect(thinkingOf(t.posts).at(-1)).toHaveLength(1);
+    const before = t.posts.length;
+    for (let i = 0; i < 20; i++) {
+      t.clock.fire();
+      await tick();
+    }
+    expect(t.posts).toHaveLength(before);
+    expect(held).toHaveLength(1);
+    held[0]?.('{"pick": 1}');
+    await tick();
+    expect(t.posts.length).toBeGreaterThan(before);
+    expect(thinkingOf(t.posts).at(-1)).toEqual([]);
+    t.room.stop();
+  });
+
+  it('posts nothing more when the game is stopped while a pet is thinking, whatever it says later', async () => {
+    const { t, held, brain } = slow((text) => text.includes('"plan"'));
+    t.start([], 5);
+    expect(await t.play(() => held.length > 0, answerTo)).toBe(true);
+    expect(thinkingOf(t.posts).at(-1)).toHaveLength(1);
+    t.room.stop();
+    expect(brain.close).toHaveBeenCalled();
+    const posted = t.posts.length;
+    for (const release of held) release('{"plan": [], "say": "Too late."}');
+    for (let i = 0; i < 10; i++) {
+      t.clock.fire();
+      await tick();
+    }
+    expect(t.posts).toHaveLength(posted);
+    expect(t.lines().filter((l) => l.text === 'Too late.')).toEqual([]);
+    expect(t.clock.live()).toBe(0);
+    expect(t.last('over')).toBeUndefined();
   });
 });
 

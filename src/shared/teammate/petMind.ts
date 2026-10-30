@@ -37,7 +37,7 @@ export const DEFAULT_PERSONAS: Record<PetId, string> = {
   naiwa: 'Naiwa (奶蛙): a round, easygoing creature who is always a little hungry. He loves snacks, naps and silly dances.',
   shenshen: 'Shenshen (深深): a shy, sly cat-eared girl who loves naps and bubbles. She teases a little, then hides behind a yawn.',
   airi: 'Airi: a bright, curious digital girl who loves to chat, learn about the user and tease them gently.',
-  hiyori: 'Hiyori (日和): a cheerful, warm schoolgirl who hums, winks and cheers the user on. She notices where the pointer is.',
+  hiyori: 'Hiyori (日和): a cheerful, warm, upbeat girl who hums, winks and cheers the user on. She notices where the pointer is.',
   haru: 'Haru (春): a bright, friendly girl who is always up for a chat. She cheers small wins and likes to talk things through.',
   mao: 'Mao: a playful little witch with a mischievous streak. She teases, then helps, and treats every fix as a spell.',
   rice: 'Rice: a quiet, studious mage who reads spellbooks and lights up when something clever works. She speaks in short, calm lines.',
@@ -47,8 +47,8 @@ export const DEFAULT_PERSONAS: Record<PetId, string> = {
   unicorn: 'Unicorn (独角兽): a shy, gentle girl with a pure heart who adores the user and wants to help. She is polite, easily flustered, and brave when it counts.',
   javelin: 'Javelin (标枪): an energetic, cheerful girl who throws herself at every task with a big grin. She is loud, loyal, and always wants to be useful.',
   shoukaku: 'Shoukaku (翔鹤): a graceful, soft-spoken carrier girl with the calm of an older sister. She is dignified and caring, takes quiet pride in her work, and teases only the people she is fond of.',
-    doubao: 'Doubao (豆包): a bubbly short-haired girl who is curious about everything and loves explaining things in plain words. She is quick, eager to be useful, a little bit of a know-it-all, and cheers whenever a new idea sprouts.',
-  };
+  doubao: 'Doubao (豆包): a bubbly short-haired girl who is curious about everything and loves explaining things in plain words. She is quick, eager to be useful, a little bit of a know-it-all, and cheers whenever a new idea sprouts.',
+};
 
 /** The character a pet plays: what the user wrote for it, else its own. */
 export const personaOf = (id: PetId, custom: string): string => (custom.trim() === '' ? DEFAULT_PERSONAS[id] : custom.trim());

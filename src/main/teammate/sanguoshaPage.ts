@@ -20,8 +20,8 @@ const CSS = `
 #table{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 #opps{flex:1;min-height:0;overflow-y:auto;padding:10px;display:grid;
   grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;align-content:start}
-.seat{display:flex;flex-direction:column;gap:3px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;
-  background:var(--field);min-width:0}
+.seat{position:relative;display:flex;flex-direction:column;gap:3px;padding:6px 8px;border:1px solid var(--line);
+  border-radius:9px;background:var(--field);min-width:0}
 .seat .sh{display:flex;align-items:center;gap:7px}
 .seat .av{width:28px;height:28px;font-size:13px}
 .seat .info{flex:1;min-width:0}
@@ -29,9 +29,13 @@ const CSS = `
 .seat .tags{display:flex;flex-wrap:wrap;gap:3px;min-height:15px}
 .seat .st{font-size:11px}
 .seat .gear{display:flex;flex-wrap:wrap;gap:3px}
+.seat .dots{display:none;position:absolute;right:8px;top:3px;color:var(--accent);font-weight:700}
 .seat.me{border-color:var(--accent)}
 .seat.dead{opacity:.5}
 .seat.dead .nm{text-decoration:line-through}
+.seat.busy{border-color:var(--accent)}
+.seat.busy .dots{display:block;animation:blink 1.1s infinite}
+@keyframes blink{50%{opacity:.25}}
 .seat.turn{box-shadow:0 0 0 2px #f5a623}
 .seat.pick{cursor:pointer;border-style:dashed;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .seat.pick:hover{background:rgba(74,144,226,.16)}
@@ -127,7 +131,7 @@ const BODY = `<div id="game" hidden>
 const JS = `
 const KIND=${KINDS},SUIT=${SUITS},RANK=${RANKS};
 const dot=' \\u00b7 ';
-let T={},seats=[],hand=[],pile=0,turn=-1,phase='start',turns=0,ask=null,sel=null,overMsg=null;
+let T={},seats=[],hand=[],pile=0,turn=-1,phase='start',turns=0,ask=null,sel=null,overMsg=null,busy=new Set();
 const seatOf=n=>seats.find(s=>s.seat===n);
 const me=()=>seats.find(s=>s.me);
 const fill=(t,v)=>(t||'').replace('{n}',v);
@@ -180,7 +184,7 @@ function seatPick(){
 function seatEl(s){
   const k=seatPick(),opt=!!k&&k.opts.includes(s.seat);
   const c=el('div','seat'+(s.me?' me':'')+(s.alive?'':' dead')+(s.seat===turn&&s.alive?' turn':'')
-    +(opt?(k.picked.includes(s.seat)?' picked':' pick'):''));
+    +(busy.has(s.seat)?' busy':'')+(opt?(k.picked.includes(s.seat)?' picked':' pick'):''));
   const info=el('div','info'),tags=el('div','tags'),head=el('div','sh');
   info.append(el('div','nm',s.seat+'. '+s.name),tags);
   if(s.role)tags.append(el('span','tg r-'+s.role,T['role_'+s.role]));
@@ -198,6 +202,8 @@ function seatEl(s){
   s.judges.forEach(j=>gear.append(chip({id:j.card.id,name:j.as,suit:j.card.suit,rank:j.card.rank},false,true)));
   if(gear.children.length)c.append(gear);
   if(opt)c.addEventListener('click',()=>clickSeat(s));
+  c.append(el('div','dots','\\u2026'));
+  if(busy.has(s.seat))c.title=T.thinking;
   return c;
 }
 function drawBar(){
@@ -435,7 +441,7 @@ function addLine(m){
 }
 gameApi.onMsg(m=>{
   if(m.kind==='lobby'){
-    T=m.text;seats=[];hand=[];ask=null;sel=null;overMsg=null;turns=0;turn=-1;
+    T=m.text;seats=[];hand=[];ask=null;sel=null;overMsg=null;turns=0;turn=-1;busy=new Set();
     document.title=m.text.title;
     $('log').replaceChildren();$('prompt').replaceChildren();
     showLobby(m,[$('game')]);
@@ -444,6 +450,7 @@ gameApi.onMsg(m=>{
     seats=m.seats;hand=m.hand;pile=m.pile;turn=m.turn;phase=m.phase;turns=m.turns;
     render();
   }else if(m.kind==='line')addLine(m);
+  else if(m.kind==='thinking'){busy=new Set(m.seats);drawOpps()}
   else if(m.kind==='ask'){
     ask=m.ask;
     sel=ask&&ask.k==='cards'?{ids:[]}:ask&&ask.k==='seat'?{seats:[]}:null;

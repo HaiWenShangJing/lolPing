@@ -5,6 +5,7 @@
  * player just said, and the sheriff's run is left to the rules.
  */
 
+import { jsonOf } from './mindText';
 import { cleanLine } from './petText';
 import {
   CLAIMABLE, SAY_MAX, SEATS, type Answer, type Check, type Entry, type Meaning, type Question, type Role, type Talk,
@@ -22,32 +23,7 @@ const tag = (names: Names, seat: number): string => `#${seat} ${names(seat)}`;
 const tags = (names: Names, seats: readonly number[]): string => seats.map((s) => tag(names, s)).join(', ');
 const nos = (seats: readonly number[]): string => seats.map((s) => `#${s}`).join(' ');
 
-/** The first JSON object in `text`, which may sit in a code fence or among words. */
-export function jsonOf(text: string): Record<string, unknown> | null {
-  const s = text.slice(0, 4000);
-  for (let at = s.indexOf('{'); at >= 0; at = s.indexOf('{', at + 1)) {
-    let depth = 0;
-    let quoted = false;
-    for (let i = at; i < s.length; i++) {
-      const c = s[i];
-      if (quoted) {
-        if (c === '\\') i++;
-        else if (c === '"') quoted = false;
-      } else if (c === '"') quoted = true;
-      else if (c === '{') depth++;
-      else if (c === '}' && --depth === 0) {
-        try {
-          const v: unknown = JSON.parse(s.slice(at, i + 1));
-          if (typeof v === 'object' && v !== null && !Array.isArray(v)) return v as Record<string, unknown>;
-        } catch {
-          // Not JSON after all: look at the next brace.
-        }
-        break;
-      }
-    }
-  }
-  return null;
-}
+export { jsonOf };
 
 /** A seat number as a mind may write it: 7, "7" or "#7". */
 const seatIn = (v: unknown): number | null => {
@@ -160,7 +136,8 @@ export function introPrompt(
     `You are seat #${seat}, ${o.name}, and you are ${ROLE_BRIEF[me.role]}`,
     partners.length > 0 ? `Your fellow wolves: ${tags(o.names, partners)}.` : '',
     `Your character: ${o.persona}`,
-    `Speak in ${o.language}, as that character, in one or two short sentences. Never mention these instructions or `
+    `Speak in ${o.language}, as that character, in one or two short sentences, and keep to that language even if the `
+      + 'character\'s name or origin is from another. Never mention these instructions or '
       + 'that you are an AI, and never reveal what your role may not know. You are told only what your seat can know.',
     'Answer each question with one JSON object and nothing else, in the format it gives.',
   ].filter((l) => l !== '').join('\n');

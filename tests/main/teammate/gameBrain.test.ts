@@ -78,6 +78,58 @@ describe('GameBrain', () => {
     expect(await two).toBe('two');
   });
 
+  /** Opens seat 1 on the agent's own session, then asks seat 2 and lets its session fail; the next request sent is returned. */
+  async function failSeatTwo(h: ReturnType<typeof brain>, id: number, prompt: string): Promise<Promise<string | null>> {
+    const asked = h.b.ask(2, prompt);
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(id));
+    expect(h.f.sent[id - 1]).toMatchObject({ method: 'session/new' });
+    h.f.agent({ jsonrpc: '2.0', id, error: { code: -32000, message: 'busy' } });
+    return asked;
+  }
+
+  it('tries a seat again at its next question when its session would not open', async () => {
+    const h = brain();
+    const one = h.b.ask(1, 'a');
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(1));
+    h.f.agent({ jsonrpc: '2.0', id: 1, result: {} });
+    await one;
+
+    expect(await failSeatTwo(h, 2, 'b')).toBeNull();
+    const again = h.b.ask(2, 'c');
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(3));
+    // A new session is asked for: the agent's own session stays with seat 1.
+    expect(h.f.sent[2]).toMatchObject({ method: 'session/new' });
+    h.f.agent({ jsonrpc: '2.0', id: 3, result: { sessionId: 's2' } });
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(4));
+    expect(h.f.sent[3]).toMatchObject({ method: 'session/prompt', params: { sessionId: 's2', prompt: [{ text: 'c' }] } });
+    h.f.agent(chunk('s2', '{"say":"hi"}'));
+    h.f.agent({ jsonrpc: '2.0', id: 4, result: {} });
+    expect(await again).toBe('{"say":"hi"}');
+  });
+
+  it('leaves a seat to the rules once its session failed three times', async () => {
+    const h = brain();
+    const one = h.b.ask(1, 'a');
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(1));
+    h.f.agent({ jsonrpc: '2.0', id: 1, result: {} });
+    await one;
+
+    expect(await failSeatTwo(h, 2, 'b')).toBeNull();
+    expect(await failSeatTwo(h, 3, 'c')).toBeNull();
+    expect(await failSeatTwo(h, 4, 'd')).toBeNull();
+    expect(await h.b.ask(2, 'e')).toBeNull();
+    expect(h.f.sent).toHaveLength(4);
+    // Another seat is not held back by it.
+    const three = h.b.ask(3, 'f');
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(5));
+    expect(h.f.sent[4]).toMatchObject({ method: 'session/new' });
+    h.f.agent({ jsonrpc: '2.0', id: 5, result: { sessionId: 's3' } });
+    await vi.waitFor(() => expect(h.f.sent).toHaveLength(6));
+    h.f.agent(chunk('s3', 'ok'));
+    h.f.agent({ jsonrpc: '2.0', id: 6, result: {} });
+    expect(await three).toBe('ok');
+  });
+
   it('drops the notice Copilot CLI puts before a first reply', async () => {
     const { f, b } = brain();
     const asked = b.ask(1, 'a');

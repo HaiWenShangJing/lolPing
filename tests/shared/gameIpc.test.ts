@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PET_GAMES, isPetGame, parsePicks, parseReply, parseSgsIn, parseWolfIn } from '../../src/shared/gameIpc';
+import { PET_GAMES, isPetGame, parseDdzIn, parsePicks, parseReply, parseSgsIn, parseWolfIn } from '../../src/shared/gameIpc';
 import { PET_IDS, type PetId } from '../../src/shared/teammate/pet';
+import { MAX_CARDS } from '../../src/shared/teammate/doudizhuCards';
+import { MAX_BID } from '../../src/shared/teammate/doudizhuTypes';
 import { CARD_NAMES, DECK_SIZE } from '../../src/shared/teammate/sanguoshaCards';
 import { HERO_IDS, SKILLS } from '../../src/shared/teammate/sanguoshaHeroes';
 import { SEATS } from '../../src/shared/teammate/werewolf';
@@ -9,13 +11,14 @@ const [a, b, c] = PET_IDS as readonly PetId[];
 const everyone: PetId[] = PET_IDS.slice(0, SEATS);
 
 describe('isPetGame', () => {
-  it('knows the four games', () => {
+  it('knows the five games', () => {
     expect(isPetGame('werewolf')).toBe(true);
     expect(isPetGame('sanguosha')).toBe(true);
+    expect(isPetGame('doudizhu')).toBe(true);
     expect(isPetGame('mahjong')).toBe(true);
     expect(isPetGame('fight')).toBe(true);
     expect(PET_GAMES.every(isPetGame)).toBe(true);
-    expect(PET_GAMES).toHaveLength(4);
+    expect(PET_GAMES).toHaveLength(5);
   });
 
   it('refuses anything else', () => {
@@ -345,5 +348,89 @@ describe('parseSgsIn', () => {
 
   it('is not fooled by a werewolf start that has no size', () => {
     expect(parseSgsIn({ t: 'start', pets: [a], play: true })).toBeNull();
+  });
+});
+
+describe('parseDdzIn', () => {
+  it('reads each message of the Dou Dizhu page', () => {
+    expect(parseDdzIn({ t: 'start', pets: [a, b], size: 3 })).toEqual({ t: 'start', pets: [a, b], size: 3 });
+    expect(parseDdzIn({ t: 'start', pets: [], size: 6 })).toEqual({ t: 'start', pets: [], size: 6 });
+    expect(parseDdzIn({ t: 'bid', bid: 2 })).toEqual({ t: 'bid', bid: 2 });
+    expect(parseDdzIn({ t: 'play', ids: [4, 9, 30] })).toEqual({ t: 'play', ids: [4, 9, 30] });
+    expect(parseDdzIn({ t: 'check', ids: [1] })).toEqual({ t: 'check', ids: [1] });
+    expect(parseDdzIn({ t: 'hint' })).toEqual({ t: 'hint' });
+    expect(parseDdzIn({ t: 'again' })).toEqual({ t: 'again' });
+  });
+
+  it('seats at most one pet fewer than the table, since the user takes a seat', () => {
+    for (const size of [3, 4, 5, 6]) {
+      expect(parseDdzIn({ t: 'start', pets: everyone, size }), String(size))
+        .toEqual({ t: 'start', pets: everyone.slice(0, size - 1), size });
+    }
+  });
+
+  it('seats nobody but the pets it names, and none twice', () => {
+    expect(parseDdzIn({ t: 'start', pets: [a, b, a, c], size: 4 })).toEqual({ t: 'start', pets: [a, b, c], size: 4 });
+    expect(parseDdzIn({ t: 'start', pets: ['nobody'], size: 3 })).toBeNull();
+    expect(parseDdzIn({ t: 'start', pets: a, size: 3 })).toBeNull();
+    expect(parseDdzIn({ t: 'start', size: 3 })).toBeNull();
+  });
+
+  it('plays only the sizes there are: three, four, five or six', () => {
+    for (const size of [0, 1, 2, 7, 8, 12, '3', null, undefined, 3.5, NaN]) {
+      expect(parseDdzIn({ t: 'start', pets: [], size }), String(size)).toBeNull();
+    }
+    expect(parseDdzIn({ t: 'start', pets: [] })).toBeNull();
+  });
+
+  it('takes a bid from none up to the highest, and nothing else', () => {
+    for (let bid = 0; bid <= MAX_BID; bid++) expect(parseDdzIn({ t: 'bid', bid }), String(bid)).toEqual({ t: 'bid', bid });
+    for (const bid of [-1, MAX_BID + 1, 1.5, NaN, Infinity, '2', null, undefined, [2]]) {
+      expect(parseDdzIn({ t: 'bid', bid }), String(bid)).toBeNull();
+    }
+    expect(parseDdzIn({ t: 'bid' })).toBeNull();
+  });
+
+  it('takes the ids of cards a pack can hold, for a play and for a check alike', () => {
+    for (const t of ['play', 'check'] as const) {
+      expect(parseDdzIn({ t, ids: [] }), t).toEqual({ t, ids: [] });
+      expect(parseDdzIn({ t, ids: [0, MAX_CARDS - 1] }), t).toEqual({ t, ids: [0, MAX_CARDS - 1] });
+      for (const ids of [[-1], [MAX_CARDS], [1.5], [NaN], [Infinity], ['3'], [null], [[3]], 3, '3', null, undefined, {}]) {
+        expect(parseDdzIn({ t, ids }), `${t} ${String(JSON.stringify(ids))}`).toBeNull();
+      }
+      expect(parseDdzIn({ t }), t).toBeNull();
+    }
+  });
+
+  it('takes no more cards than the biggest table has', () => {
+    const ids = Array.from({ length: MAX_CARDS + 1 }, (_, i) => i % MAX_CARDS);
+    expect(parseDdzIn({ t: 'play', ids: ids.slice(1) })).toEqual({ t: 'play', ids: ids.slice(1) });
+    expect(parseDdzIn({ t: 'play', ids })).toBeNull();
+    expect(parseDdzIn({ t: 'check', ids })).toBeNull();
+  });
+
+  it('reads the fields it needs and no others', () => {
+    expect(parseDdzIn({ t: 'hint', ids: [1] })).toEqual({ t: 'hint' });
+    expect(parseDdzIn({ t: 'again', size: 6 })).toEqual({ t: 'again' });
+    expect(parseDdzIn({ t: 'bid', bid: 1, seat: 2 })).toEqual({ t: 'bid', bid: 1 });
+    expect(parseDdzIn({ t: 'start', pets: [a], size: 3, play: false })).toEqual({ t: 'start', pets: [a], size: 3 });
+  });
+
+  it('ignores whatever is not a message of the page, the other games’ messages included', () => {
+    expect(parseDdzIn({ t: 'reply', reply: { k: 'end' } })).toBeNull();
+    expect(parseDdzIn({ t: 'boom' })).toBeNull();
+    expect(parseDdzIn({ t: 'vote', seat: 2 })).toBeNull();
+    expect(parseDdzIn({ t: 'START', pets: [], size: 3 })).toBeNull();
+    expect(parseDdzIn({ kind: 'again' })).toBeNull();
+    expect(parseDdzIn({})).toBeNull();
+    expect(parseDdzIn(null)).toBeNull();
+    expect(parseDdzIn(undefined)).toBeNull();
+    expect(parseDdzIn([])).toBeNull();
+    expect(parseDdzIn('again')).toBeNull();
+    expect(parseDdzIn(5)).toBeNull();
+  });
+
+  it('is not fooled by a werewolf start that has no size', () => {
+    expect(parseDdzIn({ t: 'start', pets: [a], play: true })).toBeNull();
   });
 });

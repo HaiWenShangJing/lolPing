@@ -354,6 +354,11 @@ describe('what a mind is told', () => {
     expect(intro(g, 1, 'Simplified Chinese')).toContain('Speak in Simplified Chinese');
   });
 
+  it('keeps a character in the language of the table even when the character comes from another', () => {
+    expect(intro(board(), 1, 'Simplified Chinese'))
+      .toContain('keep to that language even if the character\'s name or origin is from another');
+  });
+
   it('lists the players by seat and name only, with no role among them', () => {
     const g = board();
     const roster = Array.from({ length: SEATS }, (_, i) => `#${i + 1} Pet${i + 1}`).join(', ');

@@ -1,9 +1,13 @@
 /**
- * The one-seat-at-a-time game windows (werewolf and Sanguosha) and what they say to each other; the pages are plain
- * HTML with this bridge.
+ * The one-seat-at-a-time game windows (werewolf, Sanguosha and Dou Dizhu) and what they say to each other; the pages are
+ * plain HTML with this bridge.
  */
 
 import { PET_IDS, isPetId, type PetId } from './teammate/pet';
+import { MAX_CARDS } from './teammate/doudizhuCards';
+import type { Card as DdzCard } from './teammate/doudizhuCards';
+import { MAX_BID, isSize as isDdzSize } from './teammate/doudizhuTypes';
+import type { Role as DdzRole, Size as DdzSize } from './teammate/doudizhuTypes';
 import { CARD_NAMES, DECK_SIZE, type CardName } from './teammate/sanguoshaCards';
 import { SKILLS, isHeroId, type SkillId } from './teammate/sanguoshaHeroes';
 import type { CardsWhy, Phase as SgsPhase, Reply, Size, SkillOption, Use, Winner } from './teammate/sanguoshaTypes';
@@ -16,7 +20,7 @@ import type { Phase } from './teammate/werewolfRun';
 export const GAME_CH = { msg: 'game:msg', send: 'game:send' } as const;
 
 /** The games the pets play with the user, the mahjong scene they act out and the boxing match they put on. */
-export const PET_GAMES = ['werewolf', 'sanguosha', 'mahjong', 'fight'] as const;
+export const PET_GAMES = ['werewolf', 'sanguosha', 'doudizhu', 'mahjong', 'fight'] as const;
 export type PetGame = (typeof PET_GAMES)[number];
 export const isPetGame = (raw: unknown): raw is PetGame => (PET_GAMES as readonly unknown[]).includes(raw);
 
@@ -125,6 +129,8 @@ export type SgsOut =
     turns: number;
   }
   | { kind: 'line'; tone: SgsTone; seat: number | null; text: string }
+  /** The seats whose pet is thinking with Copilot CLI just now. */
+  | { kind: 'thinking'; seats: number[] }
   | { kind: 'ask'; ask: SgsAsk | null }
   /** `win` is true when the user's side has won; `title` is the headline and `text` the roles. */
   | { kind: 'over'; win: boolean; winner: Winner | null; title: string; text: string };
@@ -132,6 +138,79 @@ export type SgsOut =
 export type SgsIn =
   | { t: 'start'; pets: PetId[]; size: Size }
   | { t: 'reply'; reply: Reply }
+  | { t: 'again' };
+
+/** What a seat last did, which stays on the table until its next turn: a bid, a pass or the cards it played. */
+export type DdzShown =
+  | { k: 'bid'; bid: number }
+  | { k: 'pass' }
+  | { k: 'play'; cards: DdzCard[]; label: string; bomb: boolean };
+
+/** One seat at the Dou Dizhu table as the user sees it: what anyone may see, and who sits there. */
+export interface DdzSeat {
+  seat: number;
+  id: 'user' | PetId;
+  name: string;
+  color: string;
+  me: boolean;
+  /** The side the user knows the seat to be on; null while he does not. */
+  role: DdzRole | null;
+  /** True for the user's own seat when it is a landlord that nobody else knows yet. */
+  hidden: boolean;
+  /** The cards left in the hand. */
+  cards: number;
+  shown: DdzShown | null;
+}
+
+export type DdzPhase = 'bid' | 'play' | 'over';
+
+/** What the user is asked to do now, with the words for it. */
+export type DdzAsk = { title: string } & (
+  | { k: 'bid'; min: number; max: number }
+  | { k: 'play'; lead: boolean }
+);
+
+export type DdzTone = 'sys' | 'head' | 'act' | 'pass' | 'bomb' | 'say' | 'secret';
+
+export type DdzOut =
+  | GameLobby
+  | {
+    kind: 'state';
+    size: DdzSize;
+    seats: DdzSeat[];
+    /** The user's own cards, highest first. */
+    hand: DdzCard[];
+    phase: DdzPhase;
+    turn: number | null;
+    /** The seat whose play is on the table for the others to beat; nobody's at a lead. */
+    top: number | null;
+    base: number;
+    bombs: number;
+    /** The card called, at a table that calls one. */
+    call: DdzCard | null;
+    /** The cards the landlord in the open took from the bottom. */
+    holes: DdzCard[];
+  }
+  | { kind: 'line'; tone: DdzTone; seat: number | null; text: string }
+  /** The seats whose pet is thinking with Copilot CLI just now. */
+  | { kind: 'thinking'; seats: number[] }
+  | { kind: 'ask'; ask: DdzAsk | null }
+  /** The answer to a `check`: whether `ids` make a play now, and what the play is called or why it is none. */
+  | { kind: 'verdict'; ids: number[]; ok: boolean; label: string }
+  /** The next play the user may make, from the best; no cards when nothing he holds beats the table. */
+  | { kind: 'hint'; ids: number[]; label: string }
+  /** `win` is true when the user's side has won; `title` is the headline and `text` the stakes and the points. */
+  | { kind: 'over'; win: boolean; winner: DdzRole; title: string; text: string };
+
+export type DdzIn =
+  | { t: 'start'; pets: PetId[]; size: DdzSize }
+  /** 0 is no bid. */
+  | { t: 'bid'; bid: number }
+  /** No cards is a pass. */
+  | { t: 'play'; ids: number[] }
+  /** Asks whether the cards make a play now; answered by a `verdict`. */
+  | { t: 'check'; ids: number[] }
+  | { t: 'hint' }
   | { t: 'again' };
 
 const record = (raw: unknown): Record<string, unknown> | null =>
@@ -272,6 +351,44 @@ export function parseSgsIn(raw: unknown): SgsIn | null {
       const reply = parseReply(r.reply);
       return reply ? { t: 'reply', reply } : null;
     }
+    case 'again': return { t: 'again' };
+    default: return null;
+  }
+}
+
+const ddzIds = (raw: unknown): number[] | null => {
+  if (!Array.isArray(raw) || raw.length > MAX_CARDS) return null;
+  const ids: number[] = [];
+  for (const r of raw) {
+    if (typeof r !== 'number' || !Number.isInteger(r) || r < 0 || r >= MAX_CARDS) return null;
+    ids.push(r);
+  }
+  return ids;
+};
+
+/** What the Dou Dizhu page sent; null for anything that is not one of its messages. */
+export function parseDdzIn(raw: unknown): DdzIn | null {
+  const r = record(raw);
+  if (!r) return null;
+  switch (r.t) {
+    case 'start': {
+      if (!isDdzSize(r.size)) return null;
+      const pets = parsePicks(r.pets, r.size - 1);
+      return pets ? { t: 'start', pets, size: r.size } : null;
+    }
+    case 'bid': {
+      const bid = r.bid;
+      return typeof bid === 'number' && Number.isInteger(bid) && bid >= 0 && bid <= MAX_BID ? { t: 'bid', bid } : null;
+    }
+    case 'play': {
+      const ids = ddzIds(r.ids);
+      return ids ? { t: 'play', ids } : null;
+    }
+    case 'check': {
+      const ids = ddzIds(r.ids);
+      return ids ? { t: 'check', ids } : null;
+    }
+    case 'hint': return { t: 'hint' };
     case 'again': return { t: 'again' };
     default: return null;
   }

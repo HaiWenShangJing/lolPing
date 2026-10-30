@@ -495,8 +495,9 @@ describe('the words of the page', () => {
     expect(t.title).toBe(w.title);
     expect(t.start).toBe(g.start);
     expect(t.again).toBe(g.again);
-    expect(t.mindsOn).toBe(g.mindsOn);
-    expect(t.mindsOff, 'the pets here never think with Copilot CLI').toBe(w.bots);
+    expect(t.mindsOn).toBe(w.minds);
+    expect(t.mindsOff).toBe(g.mindsOff);
+    expect(t.thinking).toBe(w.thinking);
     expect(t.rules).toBe(w.rules);
     expect(t.pick).toBe(w.pick);
     expect(t.size_5).toBe(w.size5);

@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS, type Settings } from '../../../src/shared/settings';
 import { DEFAULT_PETS, type PetId } from '../../../src/shared/teammate/pet';
 import type { PetCommand, PetDriveResult, PetStatus, SayTo } from '../../../src/shared/teammate/petControl';
 import {
-  HOST_CALLS_MAX, HOST_IDLE_SECONDS, HOST_REST, HOST_SERVER, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, restDelayMs,
+  HOST_CALLS_MAX, HOST_IDLE_SECONDS, HOST_REMIND, HOST_REST, HOST_SERVER, HOST_TURNS_MAX, HOST_TURN_MAX_MS, hostArgs, restDelayMs,
 } from '../../../src/shared/teammate/petHost';
 import type { PetNote } from '../../../src/shared/teammate/petMind';
 import type { RoomLine } from '../../../src/shared/teammate/petSociety';
@@ -827,22 +827,62 @@ describe('PetHost nudges', () => {
 });
 
 describe('PetHost failures', () => {
-  /** Wakes up and has the agent end its turn without a call. */
-  const silent = async (h: ReturnType<typeof harness>, n: number): Promise<void> => {
-    const s = await h.wake(n);
+  /** Wakes up and has the agent answer in words twice, once to the wake-up and once to the reminder that follows: no call. */
+  const silent = async (h: ReturnType<typeof harness>): Promise<void> => {
+    const first = h.prompts() + 1;
+    const s = await h.wake(first);
+    s.finish();
+    await vi.waitFor(() => expect(h.prompts()).toBe(first + 1), { interval: 1 });
     s.finish();
   };
+
+  it('reminds a mind that answered in words, once and in the same session, and counts nothing when it then acts', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    s.finish();
+    await vi.waitFor(() => expect(s.prompts).toHaveLength(2), { interval: 1 });
+    expect(s.prompts[1]).toBe(HOST_REMIND);
+    await h.reply(s, { say: 'hi there', rest: 120 });
+    await vi.waitFor(() => expect(h.delays()).toEqual([restDelayMs('normal', 120, 0.5)]), { interval: 1 });
+    expect(h.said()).toEqual(['hi there']);
+    expect(h.told).toEqual([]);
+    expect(h.sessions).toHaveLength(1);
+    expect(s.closed).toBe(false);
+    expect(s.prompts).toHaveLength(2);
+  });
+
+  it('does not remind a mind that did something, even only to rest', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    await h.reply(s, { say: null, rest: 100 });
+    await vi.waitFor(() => expect(h.delays()).toEqual([restDelayMs('normal', 100, 0.5)]), { interval: 1 });
+    expect(s.prompts).toHaveLength(1);
+    expect(h.told).toEqual([]);
+  });
+
+  it('does not remind a wake-up that was cut off for taking too long', async () => {
+    const h = harness();
+    h.turnOn();
+    const s = await h.wake(1);
+    h.fire(h.timers.find((t) => t.live && t.ms === HOST_TURN_MAX_MS));
+    s.finish();
+    await vi.waitFor(() => expect(h.told).toEqual([words.hostSilent(NAME)]), { interval: 1 });
+    expect(s.prompts).toHaveLength(1);
+  });
 
   it('says so the first time a wake-up did nothing, ends that session, and tries again after a pause', async () => {
     const h = harness();
     h.turnOn();
-    await silent(h, 1);
+    await silent(h);
     await h.settle();
     expect(h.told).toEqual([words.hostSilent(NAME)]);
     expect(h.sessions[0].closed).toBe(true);
+    expect(h.sessions[0].prompts).toHaveLength(2);
     expect(h.delays()).toEqual([BACKOFF_MS[0]]);
     expect(h.host.active).toBe(true);
-    await silent(h, 2);
+    await silent(h);
     await h.settle();
     expect(h.told).toHaveLength(1);
     expect(h.delays()).toEqual([BACKOFF_MS[1]]);
@@ -852,11 +892,11 @@ describe('PetHost failures', () => {
   it('gives up after three in a row, says so, and starts again only when turned off and on', async () => {
     const h = harness();
     h.turnOn();
-    await silent(h, 1);
+    await silent(h);
     await h.settle();
-    await silent(h, 2);
+    await silent(h);
     await h.settle();
-    await silent(h, 3);
+    await silent(h);
     await vi.waitFor(() => expect(h.host.active).toBe(false));
     expect(h.told).toEqual([words.hostSilent(NAME), words.hostGaveUp]);
     expect(h.pending()).toEqual([]);
@@ -871,13 +911,13 @@ describe('PetHost failures', () => {
   it('starts counting again after a wake-up that worked', async () => {
     const h = harness();
     h.turnOn();
-    await silent(h, 1);
+    await silent(h);
     await h.settle();
-    const s = await h.wake(2);
+    const s = await h.wake(3);
     await h.reply(s, { rest: 120 });
     await h.settle();
     expect(h.delays()).toEqual([120_000]);
-    await silent(h, 3);
+    await silent(h);
     await h.settle();
     expect(h.told.filter((t) => t === words.hostSilent(NAME))).toHaveLength(2);
   });
