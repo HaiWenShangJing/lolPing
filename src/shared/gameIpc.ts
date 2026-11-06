@@ -13,7 +13,7 @@ import { SKILLS, isHeroId, type SkillId } from './teammate/sanguoshaHeroes';
 import type { CardsWhy, Phase as SgsPhase, Reply, Size, SkillOption, Use, Winner } from './teammate/sanguoshaTypes';
 import { isSize } from './teammate/sanguoshaTypes';
 import type { CardView, HeroInfo, SeatView } from './teammate/sanguoshaView';
-import { CRESCENT_SEATS, SEATS, isMode, seatsOf, type Mode, type Role, type Side } from './teammate/werewolf';
+import { CRESCENT_SEATS, SEATS, isMode, rolesOf, seatsOf, type Mode, type Role, type Side } from './teammate/werewolf';
 import type { Phase } from './teammate/werewolfRun';
 
 /** `msg`: main → page. `send`: page → main. */
@@ -59,6 +59,9 @@ export interface GameVariant {
   rules: string;
   pickPlay: string;
   pickWatch: string;
+  /** The roles the user may ask for when playing (the first, with an empty id, is a random one), with the words for the choice. */
+  roles?: { id: string; label: string }[];
+  rolePick?: string;
 }
 
 /** One seat at the werewolf table. `role` is null while the user may not know it. */
@@ -104,7 +107,7 @@ export type WolfOut =
 
 export type WolfIn =
   /** `play`: the user takes a seat; false to only watch, with every seat played by a pet. */
-  | { t: 'start'; pets: PetId[]; play: boolean; mode?: Mode }
+  | { t: 'start'; pets: PetId[]; play: boolean; mode?: Mode; role?: Role }
   | { t: 'target'; seat: number }
   | { t: 'card'; index: 0 | 1 }
   | { t: 'pair'; seats: [number, number] }
@@ -271,7 +274,15 @@ export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null 
       const seats = mode === undefined || mode === 'classic' ? table : seatsOf(mode);
       const pets = parsePicks(r.pets, play ? seats - 1 : seats);
       if (!pets) return null;
-      return mode === undefined ? { t: 'start', pets, play } : { t: 'start', pets, play, mode };
+      let role: Role | undefined;
+      if (r.role !== undefined) {
+        if (typeof r.role !== 'string' || !rolesOf(mode ?? 'classic').includes(r.role as Role)) return null;
+        role = r.role as Role;
+      }
+      const out: WolfIn = { t: 'start', pets, play };
+      if (mode !== undefined) out.mode = mode;
+      if (role !== undefined) out.role = role;
+      return out;
     }
     case 'card': return r.index === 0 || r.index === 1 ? { t: 'card', index: r.index } : null;
     case 'pair': {

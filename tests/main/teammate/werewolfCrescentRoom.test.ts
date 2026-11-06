@@ -103,6 +103,26 @@ describe('WerewolfRoom, crescent', () => {
   }, 120_000);
 });
 
+describe('a role asked for', () => {
+  it('lists the roles in the lobby, and deals the user the one asked for, also in a rematch', async () => {
+    const t = room(8);
+    t.r.lobby();
+    const lobby = t.posts[0];
+    if (lobby?.kind !== 'lobby') throw new Error('no lobby');
+    expect(lobby.variants?.[0]?.roles?.[0]).toEqual({ id: '', label: w.roleRandom });
+    expect(lobby.variants?.[0]?.roles?.map((r) => r.id)).toContain('idiot');
+    expect(lobby.variants?.[1]?.roles?.map((r) => r.id)).toContain('thief');
+    t.posts.length = 0;
+    t.r.on({ t: 'start', pets: [], play: true, mode: 'crescent', role: 'cupid' });
+    await tick();
+    const mine = (): string | null | undefined => {
+      const s = [...t.posts].reverse().find((m) => m.kind === 'state');
+      return s?.kind === 'state' ? s.seats.find((x) => x.me)?.role : undefined;
+    };
+    expect(mine()).toBe('cupid');
+  });
+});
+
 describe('the chat after a game', () => {
   const quips = (): string[] => w.chatQuips;
 

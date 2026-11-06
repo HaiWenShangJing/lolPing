@@ -220,14 +220,27 @@ export class WerewolfGame {
     this.players = players;
   }
 
-  /** Deals the players their seats and roles, both shuffled so the user is not always the same one. */
-  static deal(whos: readonly Who[], random: () => number, mode: Mode = 'classic'): WerewolfGame {
+  /**
+   * Deals the players their seats and roles, both shuffled so the user is not always the same one. With `wish` the user
+   * gets that role and the others share what is left at random.
+   */
+  static deal(whos: readonly Who[], random: () => number, mode: Mode = 'classic', wish?: Role): WerewolfGame {
     const seats = seatsOf(mode);
     if (whos.length !== seats) throw new Error(`A game needs ${seats} players.`);
-    const roles = shuffled(rolesOf(mode), random);
-    return WerewolfGame.seat(
-      shuffled(whos, random).map((who, i) => ({ who, role: roles[i] as Role })), mode,
-    );
+    const cards = [...rolesOf(mode)];
+    const at = wish === undefined || !whos.includes('user') ? -1 : cards.indexOf(wish);
+    if (at < 0) {
+      const roles = shuffled(cards, random);
+      return WerewolfGame.seat(shuffled(whos, random).map((who, i) => ({ who, role: roles[i] as Role })), mode);
+    }
+    cards.splice(at, 1);
+    const roles = shuffled(cards, random);
+    const others = shuffled(whos.filter((x) => x !== 'user'), random);
+    const dealt = [
+      { who: 'user' as Who, role: wish as Role },
+      ...others.map((who, i) => ({ who, role: roles[i] as Role })),
+    ];
+    return WerewolfGame.seat(shuffled(dealt, random), mode);
   }
 
   /** Seats the players in the order given, each told its role and each wolf the other wolves. */

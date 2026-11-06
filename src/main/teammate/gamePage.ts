@@ -30,11 +30,11 @@ input:focus{border-color:var(--accent)}
   margin:0 auto;width:100%}
 #lobby h2{margin:0;font-size:20px}
 #lobby p{margin:0}
-#lMode,#lSize,#lVar{display:flex;gap:8px;flex-wrap:wrap}
-#lMode label,#lSize label,#lVar label{display:flex;align-items:center;padding:6px 14px;border:1px solid var(--line);
+#lMode,#lSize,#lVar,#lRole{display:flex;gap:8px;flex-wrap:wrap}
+#lMode label,#lSize label,#lVar label,#lRole label{display:flex;align-items:center;padding:6px 14px;border:1px solid var(--line);
   border-radius:8px;cursor:pointer;background:var(--field)}
-#lMode label.on,#lSize label.on,#lVar label.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-#lMode input,#lSize input,#lVar input{display:none}
+#lMode label.on,#lSize label.on,#lVar label.on,#lRole label.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+#lMode input,#lSize input,#lVar input,#lRole input{display:none}
 #lGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 #lGrid label{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
   cursor:pointer;background:var(--field)}
@@ -50,6 +50,8 @@ const LOBBY = `<div id="lobby" hidden>
   <div id="lVar" hidden></div>
   <div id="lMode" hidden></div>
   <div id="lSize" hidden></div>
+  <p id="lRoleT" hidden></p>
+  <div id="lRole" hidden></div>
   <p id="lPick"></p>
   <div id="lGrid"></div>
   <p id="lMinds" class="dim"></p>
@@ -75,6 +77,7 @@ function showLobby(m,rest){
   $('lMinds').textContent=m.minds?m.text.mindsOn:m.text.mindsOff;
   $('lStart').textContent=m.text.start;
   const boxes=[],modes=[],sizes=[],vars=[];
+  let role='';
   let play=true,size=m.sizes?m.sizes[0]:0,v=m.variants?m.variants[0]:null;
   const cap=()=>m.sizes?size-1:v?(play?v.seats:v.watchSeats):play?m.seats:m.watchSeats;
   const fresh=()=>{
@@ -89,6 +92,19 @@ function showLobby(m,rest){
     });
     modes.forEach(r=>{r.parentElement.className=(r.value==='play')===play?'on':''});
     sizes.forEach(r=>{r.parentElement.className=Number(r.value)===size?'on':''});
+    const pickRole=!!(play&&v&&v.roles);
+    $('lRoleT').hidden=$('lRole').hidden=!pickRole;
+    if(pickRole){
+      if(!v.roles.some(x=>x.id===role))role='';
+      $('lRoleT').textContent=v.rolePick||'';
+      $('lRole').replaceChildren(...v.roles.map(x=>{
+        const l=el('label',x.id===role?'on':''),r=document.createElement('input');
+        r.type='radio';r.name='role';r.value=x.id;r.checked=x.id===role;
+        r.addEventListener('change',()=>{role=x.id;fresh()});
+        l.append(r,el('span','',x.label));
+        return l;
+      }));
+    }
   };
   const both=m.text.modePlay&&m.text.modeWatch;
   $('lMode').hidden=!both;
@@ -126,7 +142,7 @@ function showLobby(m,rest){
   fresh();
   $('lStart').onclick=()=>{
     const pets=boxes.filter(b=>b.checked).map(b=>b.value);
-    send(m.sizes?{t:'start',pets,size}:v?{t:'start',pets,play,mode:v.id}:{t:'start',pets,play});
+    send(m.sizes?{t:'start',pets,size}:v?(play&&role?{t:'start',pets,play,mode:v.id,role}:{t:'start',pets,play,mode:v.id}):{t:'start',pets,play});
   };
 }
 `;

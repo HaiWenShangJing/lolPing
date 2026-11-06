@@ -146,3 +146,4 @@ describe('the pets at an eighteen seat table', () => {
     expect(new Set(seats.slice(PET_IDS.length)).size).toBe(seats.length - PET_IDS.length);
   });
 });
+

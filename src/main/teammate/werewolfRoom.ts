@@ -4,7 +4,7 @@ import {
   entryLines, fillSeats, lobbyChoices, phrasesOf, roleName, rolesLine, winLine, wolfAnswer, wolfAsk, wolfText,
 } from '../../shared/teammate/gameText';
 import {
-  CRESCENT_SEATS, SEATS, WerewolfGame, isWolfSide, seatsOf, type Answer, type Mode, type Question, type Who,
+  CRESCENT_SEATS, SEATS, WerewolfGame, isWolfSide, rolesOf, seatsOf, type Answer, type Mode, type Question, type Role, type Who,
 } from '../../shared/teammate/werewolf';
 import { chatPrompt, makeAi, parseChat } from '../../shared/teammate/werewolfMind';
 import { BoomButton, Stopped, runGame, type RunEvent } from '../../shared/teammate/werewolfRun';
@@ -27,6 +27,8 @@ interface Run {
   whos: Who[];
   round: number;
   mode: Mode;
+  /** The role the user asked for, kept for a rematch. */
+  wish?: Role;
   /** Answers a message of the chat after the game; set once the game is dealt. */
   chat: (text: string) => void;
 }
@@ -48,14 +50,18 @@ export class WerewolfRoom {
     const seats = Math.min(WOLF_AI_SEATS, PET_IDS.length);
     const watchSeats = Math.min(SEATS, PET_IDS.length);
     // The crescent table has more seats than there are pets, so pets sit twice and the table is never short.
+    const choices = (mode: Mode): Pick<GameVariant, 'roles' | 'rolePick'> => ({
+      rolePick: w.rolePick,
+      roles: [{ id: '', label: w.roleRandom }, ...[...new Set(rolesOf(mode))].map((r) => ({ id: r, label: w.role[r] }))],
+    });
     const variants: GameVariant[] = [
       {
         id: 'classic', label: w.modeClassic, seats, watchSeats, rules: w.rules,
-        pickPlay: w.pickPlay(seats), pickWatch: w.pickWatch(watchSeats),
+        pickPlay: w.pickPlay(seats), pickWatch: w.pickWatch(watchSeats), ...choices('classic'),
       },
       {
         id: 'crescent', label: w.modeCrescent, seats: CRESCENT_SEATS - 1, watchSeats: CRESCENT_SEATS,
-        rules: w.rulesCrescent, pickPlay: w.pickPlay(CRESCENT_SEATS - 1), pickWatch: w.pickWatch(CRESCENT_SEATS),
+        rules: w.rulesCrescent, pickPlay: w.pickPlay(CRESCENT_SEATS - 1), pickWatch: w.pickWatch(CRESCENT_SEATS), ...choices('crescent'),
       },
     ];
     this.post({
@@ -71,7 +77,7 @@ export class WerewolfRoom {
         else this.lobby();
         return;
       case 'start':
-        if (!this.run) this.begin(msg.pets, msg.play, msg.mode ?? 'classic');
+        if (!this.run) this.begin(msg.pets, msg.play, msg.mode ?? 'classic', null, msg.role);
         return;
       case 'chat':
         if (this.run?.done) this.run.chat(msg.text);
@@ -104,10 +110,10 @@ export class WerewolfRoom {
   /** The same players sit down again: seats keep their pets, so each pet's session still remembers every game before. */
   private rematch(prev: Run): void {
     prev.done = false;
-    this.begin([], false, prev.mode, prev);
+    this.begin([], false, prev.mode, prev, prev.wish);
   }
 
-  private begin(picks: readonly PetId[], play: boolean, mode: Mode, prev: Run | null = null): void {
+  private begin(picks: readonly PetId[], play: boolean, mode: Mode, prev: Run | null = null, wish?: Role): void {
     const { g, names, language } = this.s.words();
     const w = g.werewolf;
     const random = (): number => this.s.random();
@@ -120,11 +126,11 @@ export class WerewolfRoom {
       whos = play ? ['user', ...pets] : pets;
     }
     if (whos.length !== seatCount) return;
-    const game = WerewolfGame.deal(whos, random, mode);
+    const game = WerewolfGame.deal(whos, random, mode, wish);
     const brain = prev ? prev.brain : this.s.brain();
     const round = prev ? prev.round + 1 : 1;
     const run: Run = {
-      brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode,
+      brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode, wish,
       chat: () => undefined,
     };
     this.run = run;
