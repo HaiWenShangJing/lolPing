@@ -60,3 +60,10 @@ describe('the seer cheat message', () => {
     expect(parseWolfIn({ t: 'peek' })).toBeNull();
   });
 });
+
+describe('the chat among the dead message', () => {
+  it('carries trimmed text', () => {
+    expect(parseWolfIn({ t: 'grave', text: '  hi ' })).toEqual({ t: 'grave', text: 'hi' });
+    expect(parseWolfIn({ t: 'grave', text: '  ' })).toBeNull();
+  });
+});

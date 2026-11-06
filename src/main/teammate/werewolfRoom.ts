@@ -6,7 +6,7 @@ import {
 import {
   CRESCENT_SEATS, SEATS, WerewolfGame, isWolfSide, rolesOf, seatsOf, type Answer, type Mode, type Question, type Role, type Who,
 } from '../../shared/teammate/werewolf';
-import { chatPrompt, makeAi, parseChat } from '../../shared/teammate/werewolfMind';
+import { chatPrompt, gravePrompt, makeAi, parseChat } from '../../shared/teammate/werewolfMind';
 import { BoomButton, Stopped, runGame, type RunEvent } from '../../shared/teammate/werewolfRun';
 import type { GameBrain } from './gameBrain';
 import type { GameServices } from './gameServices';
@@ -33,6 +33,8 @@ interface Run {
   chat: (text: string) => void;
   /** The seer's cheat: shows the role of a seat from now on. */
   peek: (seat: number) => void;
+  /** A line of the user's in the chat among the dead; the dead pets answer. */
+  grave: (text: string) => void;
 }
 
 /**
@@ -83,6 +85,9 @@ export class WerewolfRoom {
         return;
       case 'chat':
         if (this.run?.done) this.run.chat(msg.text);
+        return;
+      case 'grave':
+        this.run?.grave(msg.text);
         return;
       case 'peek':
         this.run?.peek(msg.seat);
@@ -136,7 +141,7 @@ export class WerewolfRoom {
     const round = prev ? prev.round + 1 : 1;
     const run: Run = {
       brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode, wish,
-      chat: () => undefined, peek: () => undefined,
+      chat: () => undefined, peek: () => undefined, grave: () => undefined,
     };
     this.run = run;
     brain?.warm();
@@ -216,8 +221,38 @@ export class WerewolfRoom {
       this.post(table);
     };
 
+    let graving = false;
+    run.grave = (text: string): void => {
+      if (graving || run.stopped || run.done || me === null || game.player(me).alive) return;
+      graving = true;
+      this.post({ kind: 'grave', seat: me, text });
+      const seated = new Set<string>();
+      const speakers: number[] = [];
+      const dead = game.players.filter((p) => !p.alive && p.who !== 'user').map((p) => p.seat);
+      for (const s of dead.sort(() => random() - 0.5)) {
+        if (speakers.length >= 1 + Math.floor(random() * 2) || seated.has(who(s))) continue;
+        seated.add(who(s));
+        speakers.push(s);
+      }
+      const quip = (): string => w.graveQuips[Math.floor(random() * w.graveQuips.length)] ?? '';
+      const reply = async (seat: number): Promise<string> => {
+        const id = who(seat);
+        if (!brain || id === 'user') return quip();
+        const raw = await brain.ask(seat, gravePrompt(game, {
+          seat, name: name(seat), persona: this.s.persona(id), names: called, language, user: 'The user', text,
+        }));
+        return parseChat(raw) ?? quip();
+      };
+      void Promise.all(speakers.map((s) => reply(s).catch(quip))).then((lines) => {
+        if (run.stopped) return;
+        speakers.forEach((s, i) => this.post({ kind: 'grave', seat: s, text: lines[i] ?? '' }));
+      }).finally(() => {
+        graving = false;
+      });
+    };
+
     let chatting = false;
-    run.chat =  (text: string): void => {
+    run.chat = (text: string): void => {
       if (chatting || run.stopped) return;
       chatting = true;
       this.post(me === null

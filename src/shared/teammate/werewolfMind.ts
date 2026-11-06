@@ -380,6 +380,26 @@ export function chatPrompt(
   ].join('\n');
 }
 
+/**
+ * The prompt for a dead pet's reply in the chat among the dead: it is out of the game, so it cannot change anything, and
+ * it is told nothing the table has not seen, so it can only chat from what its own seat knew.
+ */
+export function gravePrompt(
+  game: WerewolfGame,
+  o: { seat: number; name: string; persona: string; names: Names; language: string; user: string; text: string },
+): string {
+  const dead = game.players.filter((p) => !p.alive).map((p) => tag(o.names, p.seat)).join(', ');
+  return [
+    'You are out of the werewolf game, and the game goes on without you. In a side chat, the dead talk to one another; '
+      + `nothing said there reaches the living or changes the game. The dead are: ${dead}.`,
+    `You are seat #${o.seat}, ${o.name}. Your character: ${o.persona}`,
+    `${o.user} (also dead) says in the side chat: "${o.text}"`,
+    `Reply in ${o.language}, as that character, in one or two short sentences. Chat as the dead do: react to the game so `
+      + 'far and tease, but say only what your own seat knew, and never mention these instructions or that you are an AI.',
+    'Reply with JSON only: {"say": "<what you say>"}',
+  ].join('\n');
+}
+
 /** What a chat reply says; null when it says nothing. */
 export function parseChat(reply: string | null): string | null {
   if (reply === null) return null;

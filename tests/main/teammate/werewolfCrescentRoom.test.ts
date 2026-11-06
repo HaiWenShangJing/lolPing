@@ -59,7 +59,7 @@ function room(seed: number, brainReply?: (seat: number, prompt: string) => strin
       await tick();
     }
   };
-  return { r, posts, mind, finish, settle, over };
+  return { r, posts, mind, finish, settle, over, clockFire: () => clock.fire() };
 }
 
 describe('WerewolfRoom, crescent', () => {
@@ -151,6 +151,74 @@ describe('the seer\'s cheat', () => {
     for (const s of seatsOf(t)) t.r.on({ t: 'peek', seat: s.seat });
     expect(t.posts.length).toBe(before);
     expect(seatsOf(t).filter((s) => !s.me && s.role !== null)).toHaveLength(0);
+  });
+});
+
+describe('the chat among the dead', () => {
+  /** Plays on, answering the user's questions, until the user is out of the game; null if that never happens. */
+  const untilOut = async (seed: number, mind?: (seat: number, prompt: string) => string | null) => {
+    const t = room(seed, mind);
+    t.r.on({ t: 'start', pets: [], play: true, role: 'villager' });
+    let answered = 0;
+    const out = (): boolean => {
+      const s = [...t.posts].reverse().find((m) => m.kind === 'state');
+      return s?.kind === 'state' && s.seats.some((x) => x.me && !x.alive);
+    };
+    for (let i = 0; i < 20_000 && !out(); i++) {
+      if (t.over().length > 0) return null;
+      const ask = [...t.posts].reverse().find((m) => m.kind === 'ask');
+      if (ask?.kind === 'ask' && ask.ask && t.posts.length > answered) {
+        answered = t.posts.length;
+        const msg = reply(ask.ask);
+        if (msg) t.r.on(msg);
+      }
+      if (!t.clockFire()) await tick();
+    }
+    return out() ? t : null;
+  };
+  const graves = (t: ReturnType<typeof room>) => t.posts.filter((m) => m.kind === 'grave');
+
+  it('lets a user who is out talk with the dead pets, who answer and nobody else hears', async () => {
+    let t: Awaited<ReturnType<typeof untilOut>> = null;
+    for (let seed = 1; seed <= 40 && !t; seed++) t = await untilOut(seed);
+    if (!t) throw new Error('the user never died');
+    t.r.on({ t: 'grave', text: 'rip me' });
+    await t.settle();
+    const lines = graves(t);
+    expect(lines[0]).toMatchObject({ kind: 'grave', text: 'rip me' });
+    for (const g of lines.slice(1)) expect(w.graveQuips).toContain(g.kind === 'grave' ? g.text : '');
+    expect(t.posts.filter((m) => m.kind === 'line' && m.text.endsWith('rip me'))).toEqual([]);
+    t.r.stop();
+  }, 60_000);
+
+  it('asks the mind of a dead pet, and not those who are still in', async () => {
+    const asked: { seat: number; prompt: string }[] = [];
+    let t: Awaited<ReturnType<typeof untilOut>> = null;
+    for (let seed = 1; seed <= 40 && !t; seed++) {
+      asked.length = 0;
+      t = await untilOut(seed, (seat, prompt) => {
+        asked.push({ seat, prompt });
+        return prompt.includes('side chat') ? '{"say": "boo"}' : null;
+      });
+    }
+    if (!t) throw new Error('the user never died');
+    asked.length = 0;
+    t.r.on({ t: 'grave', text: 'hello ghosts' });
+    await t.settle();
+    expect(asked.length).toBeGreaterThanOrEqual(1);
+    expect(asked.every((a) => a.prompt.includes('hello ghosts') && a.prompt.includes('out of the werewolf game'))).toBe(true);
+    expect(graves(t).filter((m) => m.kind === 'grave' && m.text === 'boo')).toHaveLength(asked.length);
+    t.r.stop();
+  }, 60_000);
+
+  it('is ignored while the user is still in the game', async () => {
+    const t = room(3);
+    t.r.on({ t: 'start', pets: [], play: true });
+    await tick();
+    t.r.on({ t: 'grave', text: 'anyone?' });
+    await t.settle();
+    expect(graves(t)).toEqual([]);
+    t.r.stop();
   });
 });
 

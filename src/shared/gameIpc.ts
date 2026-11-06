@@ -101,6 +101,8 @@ export type WolfOut =
   | { kind: 'state'; day: number; phase: Phase; label: string; seats: WolfSeat[]; boom: boolean }
   | { kind: 'line'; tone: 'sys' | 'say' | 'secret' | 'vote'; seat: number | null; text: string }
   | { kind: 'thinking'; seats: number[] }
+  /** A line of the chat among the dead, apart from the game; seat is the one who says it. */
+  | { kind: 'grave'; seat: number; text: string }
   | { kind: 'ask'; ask: WolfAsk | null }
   /** `win` is null for a spectator; `title` is the headline and `text` the roles. */
   | { kind: 'over'; win: boolean | null; winner: Side; title: string; text: string };
@@ -113,6 +115,8 @@ export type WolfIn =
   | { t: 'pair'; seats: [number, number] }
   /** Talk after the game is over: the pets answer in character, insults allowed. */
   | { t: 'chat'; text: string }
+  /** Talk among the dead while the game goes on: only a user who is out may, and no seat that is still in hears it. */
+  | { t: 'grave'; text: string }
   /** The seer's cheat: show the role of this seat. */
   | { t: 'peek'; seat: number }
   | { t: 'vote'; seat: number | null }
@@ -296,9 +300,10 @@ export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null 
       const seat = seatNo(r.seat);
       return seat === null ? null : { t: 'peek', seat };
     }
-    case 'chat': {
+    case 'chat':
+    case 'grave': {
       const text = typeof r.text === 'string' ? r.text.trim().slice(0, 400) : '';
-      return text ? { t: 'chat', text } : null;
+      return text ? { t: r.t, text } : null;
     }
     case 'target': {
       const seat = seatNo(r.seat);

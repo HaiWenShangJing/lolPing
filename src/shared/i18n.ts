@@ -658,6 +658,9 @@ const enMateGames = {
     chatSend: 'Chat',
     chatTitle: 'After-game chat',
     peekHint: 'Seer cheat: click a player to see the role.',
+    graveTitle: 'Graveyard chat',
+    graveHint: 'Talk with the dead… (Enter to send)',
+    graveQuips: ['Well, that was quick.', 'I am not bitter. Okay, I am a little bitter.', 'Now we can watch them mess it up.', 'Who do you think is next?', 'Dying early is just a very long break.'],
     chatQuips: [
       'Wow, that was a mess. Who taught you to play?',
       'Honestly? I carried that game and you all know it.',
@@ -2064,6 +2067,9 @@ const zh: Strings = {
         chatSend: '闲聊',
         chatTitle: '赛后闲聊',
         peekHint: '预言家作弊：点别人就能看到身份。',
+        graveTitle: '亡者聊天',
+        graveHint: '和阵亡的人聊聊…（回车发送）',
+        graveQuips: ['这就出局了啊，好快。', '我才没有不甘心。好吧，有一点。', '现在我们可以看他们怎么把局搞砸了。', '你觉得下一个是谁？', '早死早超生，就当放个长假。'],
         chatQuips: [
           '哇，这局真是一团糟。谁教你们这么玩的？',
           '说实话，这局是我带飞的，你们心里有数。',

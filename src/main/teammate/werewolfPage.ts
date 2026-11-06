@@ -31,7 +31,15 @@ const CSS = `
 .tg.wolf{background:rgba(214,69,65,.2);color:#d64541}
 .tg.god{background:rgba(74,144,226,.2);color:var(--accent)}
 .tg.sh{background:rgba(217,164,50,.25);color:#b7791f}
-#side{flex:1;display:flex;flex-direction:column;min-width:0}
+#side{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+#grave{position:absolute;top:8px;right:12px;width:270px;display:flex;flex-direction:column;background:var(--field);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:5}
+#grave[hidden]{display:none}
+#grave .gt{padding:5px 10px;font-weight:600;font-size:12px;cursor:pointer;border-bottom:1px solid var(--line)}
+#grave .gl{height:150px;overflow-y:auto;padding:6px 10px;font-size:12px;word-break:break-word}
+#grave.min .gl,#grave.min form{display:none}
+#grave form{display:flex;gap:4px;padding:6px}
+#grave input{flex:1;min-width:0}
 #log{flex:1;overflow-y:auto;padding:10px 14px;word-break:break-word}
 .ln{margin:5px 0}
 .ln.sys{color:var(--dim);font-style:italic;text-align:center}
@@ -59,7 +67,9 @@ const BODY = `<div id="game" hidden>
   </div>
   <div id="main">
     <div id="seats"></div>
-    <div id="side"><div id="log"></div><div id="ask" hidden></div></div>
+    <div id="side"><div id="log"></div><div id="ask" hidden></div>
+      <div id="grave" hidden><div class="gt"></div><div class="gl"></div><form><input maxlength="400"><button type="submit"></button></form></div>
+    </div>
   </div>
 </div>`;
 
@@ -93,6 +103,25 @@ function drawSeats(){
     if(spy&&!s.me&&!s.role&&!over){c.title=T.peekHint;c.style.cursor='pointer';c.addEventListener('click',()=>send({t:'peek',seat:s.seat}))}
     return c;
   }));
+}
+function addGrave(m){
+  const r=el('div','ln'),log=document.querySelector('#grave .gl'),s=seatOf(m.seat),who=el('b','',nameOf(m.seat)+': ');
+  if(s)who.style.color=s.color;
+  r.append(who,document.createTextNode(m.text));
+  log.append(r);log.scrollTop=log.scrollHeight;
+}
+{
+  const g=document.getElementById('grave'),f=g.querySelector('form'),box=f.querySelector('input');
+  g.querySelector('.gt').addEventListener('click',()=>g.classList.toggle('min'));
+  f.addEventListener('submit',e=>{e.preventDefault();const text=box.value.trim();if(text){send({t:'grave',text});box.value=''}});
+}
+function drawGrave(){
+  const g=document.getElementById('grave'),me=seats.find(s=>s.me),out=!!me&&!me.alive&&!over;
+  if(me&&me.alive)g.querySelector('.gl').replaceChildren();
+  g.hidden=!out;
+  g.querySelector('.gt').textContent=T.graveTitle||'';
+  g.querySelector('input').placeholder=T.graveHint||'';
+  g.querySelector('button').textContent=T.chatSend||'';
 }
 function addLine(m){
   const r=el('div','ln '+m.tone),log=$('log');
@@ -194,7 +223,7 @@ function showAsk(a){
 }
 gameApi.onMsg(m=>{
   if(m.kind==='lobby'){
-    T=m.text;busy=new Set();seats=[];speaker=0;over=false;
+    T=m.text;busy=new Set();seats=[];speaker=0;over=false;drawGrave();
     document.title=m.text.title;
     $('log').replaceChildren();$('ask').replaceChildren();$('ask').hidden=true;
     setBoom(false);
@@ -210,13 +239,14 @@ gameApi.onMsg(m=>{
     $('mine').textContent=me&&me.roleName?me.roleName:'';
     $('watch').textContent=me?'':T.watching;
     setBoom(m.boom);
-    drawSeats();
+    drawSeats();drawGrave();
     $('log').scrollTop=$('log').scrollHeight;
   }else if(m.kind==='line')addLine(m);
+  else if(m.kind==='grave')addGrave(m);
   else if(m.kind==='thinking'){busy=new Set(m.seats);if(m.seats.length)speaker=0;drawSeats()}
   else if(m.kind==='ask')showAsk(m.ask);
   else if(m.kind==='over'){
-    over=true;
+    over=true;drawGrave();
     const p=$('ask'),head=el('div','',m.title),again=el('button','primary',T.again);
     p.replaceChildren();p.hidden=false;head.id='over';
     again.addEventListener('click',()=>send({t:'again'}));

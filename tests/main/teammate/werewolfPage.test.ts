@@ -173,6 +173,24 @@ describe('the werewolf page: the table', () => {
     expect(labels('#seats .seat .tg').filter((t) => t.startsWith('Role'))).toHaveLength(12);
   });
 
+  it('shows a small chat for the dead only to a user who is out, and sends what he types', () => {
+    const grave = (): HTMLElement => document.getElementById('grave') as HTMLElement;
+    deliver(state(table((n) => (n === 1 ? { me: true, alive: true } : {})), false, 'talk'));
+    expect(grave().hidden).toBe(true);
+    deliver(state(table((n) => (n === 1 ? { me: true, alive: false } : {})), false, 'talk'));
+    expect(grave().hidden).toBe(false);
+    expect(grave().querySelector('.gt')?.textContent).toBe(g.werewolf.graveTitle);
+    const box = grave().querySelector('input') as HTMLInputElement;
+    sent.length = 0;
+    box.value = '  hi dead  ';
+    (grave().querySelector('form') as HTMLFormElement).dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(sent).toEqual([{ t: 'grave', text: 'hi dead' }]);
+    deliver({ kind: 'grave', seat: 2, text: 'boo' });
+    expect(grave().querySelector('.gl')?.textContent).toContain('boo');
+    deliver({ kind: 'over', win: true, winner: 'village', title: 'Over', text: '' });
+    expect(grave().hidden).toBe(true);
+  });
+
   it('lets a seer click for a role again in the game after a game that was over', () => {
     const seer = (n: number): Partial<WolfSeat> => (n === 1 ? { me: true, role: 'seer', roleName: 'Seer' } : {});
     deliver(state(table(seer), false, 'over'));

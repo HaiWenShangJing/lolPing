@@ -102,7 +102,7 @@ describe.each(LANGS)('the words of the werewolf page in %s', (_, g) => {
     'title', 'start', 'again', 'mindsOn', 'mindsOff', 'rules', 'modePlay', 'modeWatch', 'pickPlay', 'pickWatch',
     'watching', 'out', 'sheriff', 'flipped', 'thinking', 'waiting', 'abstain', 'saveHim', 'poisonHint', 'noPotion',
     'noSelfSave', 'sendHint', 'send', 'pass', 'runYes', 'runNo', 'noShot', 'tearBadge', 'boomButton', 'boomSure',
-    'chatTitle', 'chatHint', 'chatSend', 'peekHint', 'pairHint', 'pairOk',
+    'chatTitle', 'chatHint', 'chatSend', 'peekHint', 'graveTitle', 'graveHint', 'pairHint', 'pairOk',
     'phase_night', 'phase_sheriff', 'phase_talk', 'phase_vote', 'phase_over',
   ];
 
