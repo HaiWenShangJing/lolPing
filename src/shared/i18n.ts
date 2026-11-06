@@ -657,6 +657,7 @@ const enMateGames = {
     chatHint: 'Chat with the table… trash talk welcome (Enter to send)',
     chatSend: 'Chat',
     chatTitle: 'After-game chat',
+    peekHint: 'Seer cheat: click a player to see the role.',
     chatQuips: [
       'Wow, that was a mess. Who taught you to play?',
       'Honestly? I carried that game and you all know it.',
@@ -2062,6 +2063,7 @@ const zh: Strings = {
         chatHint: '和大家聊聊… 想骂就骂（回车发送）',
         chatSend: '闲聊',
         chatTitle: '赛后闲聊',
+        peekHint: '预言家作弊：点别人就能看到身份。',
         chatQuips: [
           '哇，这局真是一团糟。谁教你们这么玩的？',
           '说实话，这局是我带飞的，你们心里有数。',

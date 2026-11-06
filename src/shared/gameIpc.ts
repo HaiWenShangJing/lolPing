@@ -113,6 +113,8 @@ export type WolfIn =
   | { t: 'pair'; seats: [number, number] }
   /** Talk after the game is over: the pets answer in character, insults allowed. */
   | { t: 'chat'; text: string }
+  /** The seer's cheat: show the role of this seat. */
+  | { t: 'peek'; seat: number }
   | { t: 'vote'; seat: number | null }
   | { t: 'say'; text: string }
   | { t: 'witch'; save: boolean; poison: number | null }
@@ -289,6 +291,10 @@ export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null 
       const a = Array.isArray(r.seats) ? seatNo(r.seats[0]) : null;
       const b = Array.isArray(r.seats) ? seatNo(r.seats[1]) : null;
       return a !== null && b !== null && a !== b ? { t: 'pair', seats: [a, b] } : null;
+    }
+    case 'peek': {
+      const seat = seatNo(r.seat);
+      return seat === null ? null : { t: 'peek', seat };
     }
     case 'chat': {
       const text = typeof r.text === 'string' ? r.text.trim().slice(0, 400) : '';

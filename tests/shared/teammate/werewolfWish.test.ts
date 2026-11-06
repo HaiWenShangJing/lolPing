@@ -52,3 +52,11 @@ describe('asking for a role', () => {
     expect(parseWolfIn({ t: 'start', pets: [], play: true })).toEqual({ t: 'start', pets: [], play: true });
   });
 });
+
+describe('the seer cheat message', () => {
+  it('names a seat', () => {
+    expect(parseWolfIn({ t: 'peek', seat: 3 })).toEqual({ t: 'peek', seat: 3 });
+    expect(parseWolfIn({ t: 'peek', seat: 0 })).toBeNull();
+    expect(parseWolfIn({ t: 'peek' })).toBeNull();
+  });
+});

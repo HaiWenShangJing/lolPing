@@ -81,6 +81,7 @@ const tagsOf=s=>{
   return t;
 };
 function drawSeats(){
+  const mine=seats.find(s=>s.me),spy=!!mine&&mine.role==='seer';
   $('seats').replaceChildren(...seats.map(s=>{
     const c=el('div','seat'+(s.alive?'':' dead')+(s.me?' me':'')+(busy.has(s.seat)?' busy':'')
       +(speaker===s.seat?' talk':''));
@@ -89,6 +90,7 @@ function drawSeats(){
     info.append(el('div','nm',tag(s.seat)),tags);
     c.append(avatar(s.color,s.name),info,el('div','dots','\\u2026'));
     if(busy.has(s.seat))c.title=T.thinking;
+    if(spy&&!s.me&&!s.role&&!over){c.title=T.peekHint;c.style.cursor='pointer';c.addEventListener('click',()=>send({t:'peek',seat:s.seat}))}
     return c;
   }));
 }

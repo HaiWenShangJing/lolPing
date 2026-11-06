@@ -56,7 +56,7 @@ export function wolfText(g: GameWords, seats: number, watchSeats: number): GameT
     abstain: w.abstain, saveHim: w.saveHim('{name}'), poisonHint: w.poisonHint, noPotion: w.noPotion,
     noSelfSave: w.noSelfSave, sendHint: w.sendHint, send: w.send, pass: w.pass, runYes: w.runYes, runNo: w.runNo,
     noShot: w.noShot, tearBadge: w.tearBadge, boomButton: w.boomButton, boomSure: w.boomSure,
-    chatTitle: w.chatTitle, chatHint: w.chatHint, chatSend: w.chatSend, pairHint: w.pairHint, pairOk: w.pairOk,
+    chatTitle: w.chatTitle, chatHint: w.chatHint, chatSend: w.chatSend, peekHint: w.peekHint, pairHint: w.pairHint, pairOk: w.pairOk,
     phase_night: w.phase.night, phase_sheriff: w.phase.sheriff, phase_talk: w.phase.talk, phase_vote: w.phase.vote,
     phase_over: w.phase.over,
   };

@@ -31,6 +31,8 @@ interface Run {
   wish?: Role;
   /** Answers a message of the chat after the game; set once the game is dealt. */
   chat: (text: string) => void;
+  /** The seer's cheat: shows the role of a seat from now on. */
+  peek: (seat: number) => void;
 }
 
 /**
@@ -82,6 +84,9 @@ export class WerewolfRoom {
       case 'chat':
         if (this.run?.done) this.run.chat(msg.text);
         return;
+      case 'peek':
+        this.run?.peek(msg.seat);
+        return;
       case 'boom':
         this.run?.boom.press();
         return;
@@ -131,7 +136,7 @@ export class WerewolfRoom {
     const round = prev ? prev.round + 1 : 1;
     const run: Run = {
       brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode, wish,
-      chat: () => undefined,
+      chat: () => undefined, peek: () => undefined,
     };
     this.run = run;
     brain?.warm();
@@ -151,6 +156,10 @@ export class WerewolfRoom {
     const called = (seat: number): string => (who(seat) === 'user' ? 'the user' : name(seat));
     const me = game.seatOfUser();
     let told = false;
+    // Only a seer may peek: the roles the user has asked to see, and the last table shown.
+    const peeked = new Set<number>();
+    let table: WolfOut | null = null;
+    const spy = me !== null && game.player(me).role === 'seer';
 
     const emit = (e: RunEvent): void => {
       if (run.stopped) return;
@@ -158,11 +167,13 @@ export class WerewolfRoom {
         case 'state': {
           const seats: WolfSeat[] = e.players.map((p) => ({
             seat: p.seat, id: p.who, name: name(p.seat), color: p.who === 'user' ? USER_COLOR : PET_COLORS[p.who],
-            alive: p.alive, role: p.role, roleName: roleName(p.role, w), me: p.who === 'user', sheriff: p.sheriff,
+            alive: p.alive, role: p.role ?? (peeked.has(p.seat) ? game.player(p.seat).role : null),
+            roleName: roleName(p.role ?? (peeked.has(p.seat) ? game.player(p.seat).role : null), w), me: p.who === 'user', sheriff: p.sheriff,
             flipped: p.flipped, lover: p.lover,
           }));
           const label = w.day(Math.max(1, e.day));
-          this.post({ kind: 'state', day: e.day, phase: e.phase, label, seats, boom: e.boom });
+          table = { kind: 'state', day: e.day, phase: e.phase, label, seats, boom: e.boom };
+          this.post(table);
           if (me === null && !told) {
             told = true;
             this.post({ kind: 'line', tone: 'secret', seat: null, text: rolesLine(game, w, name) });
@@ -196,8 +207,17 @@ export class WerewolfRoom {
       }
     };
 
+    run.peek = (seat: number): void => {
+      if (!spy || run.stopped || run.done || seat === me || seat < 1 || seat > game.players.length) return;
+      peeked.add(seat);
+      if (table?.kind !== 'state') return;
+      const role = game.player(seat).role;
+      table = { ...table, seats: table.seats.map((s) => (s.seat === seat ? { ...s, role, roleName: roleName(role, w) } : s)) };
+      this.post(table);
+    };
+
     let chatting = false;
-    run.chat = (text: string): void => {
+    run.chat =  (text: string): void => {
       if (chatting || run.stopped) return;
       chatting = true;
       this.post(me === null

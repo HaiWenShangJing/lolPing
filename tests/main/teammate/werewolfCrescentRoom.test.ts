@@ -123,6 +123,37 @@ describe('a role asked for', () => {
   });
 });
 
+describe('the seer\'s cheat', () => {
+  const seatsOf = (t: ReturnType<typeof room>) => {
+    const s = [...t.posts].reverse().find((m) => m.kind === 'state');
+    return s?.kind === 'state' ? s.seats : [];
+  };
+
+  it('shows the role of a seat the seer clicks, and keeps showing it', async () => {
+    const t = room(5);
+    t.r.on({ t: 'start', pets: [], play: true, role: 'seer' });
+    await tick();
+    const other = seatsOf(t).find((s) => !s.me);
+    if (!other) throw new Error('no other seat');
+    expect(other.role).toBeNull();
+    t.r.on({ t: 'peek', seat: other.seat });
+    expect(seatsOf(t).find((s) => s.seat === other.seat)?.role).not.toBeNull();
+    expect(seatsOf(t).filter((s) => !s.me && s.role !== null)).toHaveLength(1);
+    await t.settle();
+    expect(seatsOf(t).find((s) => s.seat === other.seat)?.role).not.toBeNull();
+  });
+
+  it('does nothing for anyone who is not the seer', async () => {
+    const t = room(5);
+    t.r.on({ t: 'start', pets: [], play: true, role: 'witch' });
+    await tick();
+    const before = t.posts.length;
+    for (const s of seatsOf(t)) t.r.on({ t: 'peek', seat: s.seat });
+    expect(t.posts.length).toBe(before);
+    expect(seatsOf(t).filter((s) => !s.me && s.role !== null)).toHaveLength(0);
+  });
+});
+
 describe('the chat after a game', () => {
   const quips = (): string[] => w.chatQuips;
 
