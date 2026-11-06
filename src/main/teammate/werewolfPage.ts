@@ -70,7 +70,11 @@ const nameOf=n=>{const s=seatOf(n);return s?s.name:String(n)};
 const tag=n=>n+'. '+nameOf(n);
 const tagsOf=s=>{
   const t=[];
-  if(s.roleName)t.push(el('span','tg '+(s.role==='wolf'?'wolf':s.role==='villager'?'':'god'),s.roleName));
+  if(s.roleName){
+    const cls=['wolf','beauty','hidden'].includes(s.role)?'wolf':['villager','thief','wildchild','cupid'].includes(s.role)?'':'god';
+    t.push(el('span','tg '+cls,s.roleName));
+  }
+  if(s.lover)t.push(el('span','tg wolf','\\u2665'));
   if(s.sheriff)t.push(el('span','tg sh',T.sheriff));
   if(s.flipped)t.push(el('span','tg',T.flipped));
   if(!s.alive)t.push(el('span','tg',T.out));
@@ -128,7 +132,26 @@ function showAsk(a){
   const btn=(label,fn,cls)=>{const b=el('button',cls||'',label);b.addEventListener('click',done(fn));return b};
   const row=el('div','opts');
   const seatBtns=(box,fn)=>a.options.forEach(n=>box.append(btn(tag(n),()=>fn(n))));
-  if(a.kind==='kill'||a.kind==='check')seatBtns(row,n=>send({t:'target',seat:n}));
+  if(a.kind==='kill'||a.kind==='check'||a.kind==='model'||a.kind==='guard'||a.kind==='charm')seatBtns(row,n=>send({t:'target',seat:n}));
+  else if(a.kind==='thief'){
+    a.cards.forEach((c,i)=>row.append(btn(c,()=>send({t:'card',index:i}),'primary')));
+  }else if(a.kind==='couple'){
+    const chosen=[],ok=el('button','primary',T.pairOk),boxes=[];
+    ok.disabled=true;
+    a.options.forEach(n=>{
+      const b=el('button','',tag(n));
+      b.addEventListener('click',()=>{
+        const i=chosen.indexOf(n);
+        if(i>=0)chosen.splice(i,1);else if(chosen.length<2)chosen.push(n);
+        boxes.forEach(([k,x])=>{x.className=chosen.includes(k)?'primary':''});
+        ok.disabled=chosen.length!==2;
+      });
+      boxes.push([n,b]);row.append(b);
+    });
+    ok.addEventListener('click',done(()=>send({t:'pair',seats:[chosen[0],chosen[1]]})));
+    p.append(el('div','sub',T.pairHint),row,ok);
+    return;
+  }
   else if(a.kind==='vote'){
     seatBtns(row,n=>send({t:'vote',seat:n}));
     row.append(btn(T.abstain,()=>send({t:'vote',seat:null}),'ghost'));
@@ -195,6 +218,10 @@ gameApi.onMsg(m=>{
     p.replaceChildren();p.hidden=false;head.id='over';
     again.addEventListener('click',()=>send({t:'again'}));
     p.append(head,el('div','dim',m.text),again);
+    const f=el('form'),box=el('input'),go=el('button','',T.chatSend);
+    box.placeholder=T.chatHint;box.maxLength=400;go.type='submit';
+    f.addEventListener('submit',e=>{e.preventDefault();const text=box.value.trim();if(text){send({t:'chat',text});box.value=''}});
+    f.append(box,go);p.append(el('div','sub',T.chatTitle),f);
   }
 });
 `;

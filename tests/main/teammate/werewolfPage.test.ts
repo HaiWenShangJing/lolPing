@@ -63,7 +63,7 @@ const sentOnce = (): WolfIn => {
 
 const seat = (n: number, over: Partial<WolfSeat> = {}): WolfSeat => ({
   seat: n, id: 'mao', name: `Pet${n}`, color: '#336699', alive: true, role: null, roleName: null, me: false,
-  sheriff: false, flipped: false, ...over,
+  sheriff: false, flipped: false, lover: false, ...over,
 });
 const table = (over: (n: number) => Partial<WolfSeat> = () => ({})): WolfSeat[] =>
   PET_IDS.slice(0, 12).map((id, i) => seat(i + 1, { id, ...over(i + 1) }));

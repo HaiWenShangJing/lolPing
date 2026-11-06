@@ -61,6 +61,20 @@ const CALLS: Record<string, Call[]> = {
   checkGood: [call(['Ann'], 'Ann')],
   claimWitch: [call(['Ann'], 'Ann'), call([null])],
   last: [call(['Ann'], 'Ann'), call([null])],
+  thiefActs: [call(['Tom', 'Wolfy'], 'Tom', 'Wolfy')],
+  thiefDid: [call(['Wolfy'], 'Wolfy')],
+  coupled: [call(['Ann', 'Bob'], 'Ann', 'Bob')],
+  loverYou: [call(['Ann'], 'Ann')],
+  modelActs: [call(['Wy', 'Ann'], 'Wy', 'Ann')],
+  modelDid: [call(['Ann'], 'Ann')],
+  guardActs: [call(['Gu', 'Ann'], 'Gu', 'Ann')],
+  guardDid: [call(['Ann'], 'Ann')],
+  charmActs: [call(['Bea', 'Ann'], 'Bea', 'Ann')],
+  charmDid: [call(['Ann'], 'Ann')],
+  turnedSpec: [call(['Wy'], 'Wy')],
+  turned: [call(['Ann, Bob'], 'Ann, Bob')],
+  grief: [call(['Ann', 'Bob'], 'Ann', 'Bob')],
+  charmDied: [call(['Ann', 'Bea'], 'Ann', 'Bea')],
 };
 
 /** They only join what they are given, so a Chinese one of them may have no Chinese in it. */
@@ -172,21 +186,27 @@ describe('the werewolf words', () => {
     expect(apart(...heads)).toBe(4);
     expect(apart(w.dawn('Ann'), w.dawnNone)).toBe(2);
     expect(apart(w.badgePass('Ann', 'Bob'), w.badgeTear('Ann'))).toBe(2);
-    expect(apart(w.winVillage, w.winGods, w.winVillagers)).toBe(3);
+    expect(apart(w.winVillage, w.winGods, w.winVillagers, w.winLovers)).toBe(4);
     expect(apart(w.youWin, w.youLose)).toBe(2);
     expect(apart(w.noSheriff, w.sheriffOff, w.noRunners)).toBe(3);
     expect(apart(w.noExile, w.exiled('Ann'))).toBe(2);
     expect(apart(w.askSpeak.day, w.askSpeak.campaign, w.askSpeak.pk, w.askSpeak.last)).toBe(4);
     expect(apart(w.askVote.exile, w.askVote.sheriff, w.askVote.again)).toBe(3);
-    expect(apart(...Object.values(w.role))).toBe(6);
-    expect(apart(...Object.values(w.roleHint))).toBe(6);
+    expect(apart(...Object.values(w.role))).toBe(12);
+    expect(apart(...Object.values(w.roleHint))).toBe(12);
+    expect(apart(w.askThief, w.askCouple, w.askModel, w.askGuard, w.askCharm)).toBe(5);
+    expect(apart(w.modeClassic, w.modeCrescent)).toBe(2);
     expect(apart(...Object.values(w.phase))).toBe(5);
     expect(apart(...Object.values(w.talk))).toBe(3);
   });
 
   it('name the roles and the moves as Chinese players do', () => {
     const w = wolf('zh-CN');
-    expect(w.role).toEqual({ wolf: '狼人', villager: '平民', seer: '预言家', witch: '女巫', hunter: '猎人', idiot: '白痴' });
+    expect(w.role).toEqual({
+      wolf: '狼人', villager: '平民', seer: '预言家', witch: '女巫', hunter: '猎人', idiot: '白痴', guard: '守卫',
+      cupid: '丘比特', thief: '盗贼', wildchild: '野孩子', beauty: '狼美人', hidden: '隐狼',
+    });
+    expect(w.rulesCrescent).toContain('新月');
     expect(w.boomButton).toBe('自爆');
     expect(w.talk.last).toBe('遗言');
     expect(w.sheriff).toBe('警长');
@@ -209,7 +229,8 @@ describe('the werewolf words', () => {
   it('name the roles of the board in English', () => {
     const w = wolf('en');
     expect(w.role).toEqual({
-      wolf: 'Wolf', villager: 'Villager', seer: 'Seer', witch: 'Witch', hunter: 'Hunter', idiot: 'Idiot',
+      wolf: 'Wolf', villager: 'Villager', seer: 'Seer', witch: 'Witch', hunter: 'Hunter', idiot: 'Idiot', guard: 'Guard',
+      cupid: 'Cupid', thief: 'Thief', wildchild: 'Wild child', beauty: 'Wolf beauty', hidden: 'Hidden wolf',
     });
     expect(w.rules).toContain('Twelve players');
     expect(w.rules).toContain('four wolves, four villagers');

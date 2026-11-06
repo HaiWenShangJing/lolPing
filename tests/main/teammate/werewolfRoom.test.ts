@@ -41,7 +41,12 @@ const answerTo: Policy = (ask, turn) => {
   const seat = seatOf(ask, turn);
   switch (ask.kind) {
     case 'kill':
-    case 'check': return { t: 'target', seat: seat ?? 1 };
+    case 'check':
+    case 'model':
+    case 'guard':
+    case 'charm': return { t: 'target', seat: seat ?? 1 };
+    case 'thief': return { t: 'card', index: 0 };
+    case 'couple': return { t: 'pair', seats: [ask.options[0] ?? 1, ask.options[1] ?? 2] };
     case 'vote': return { t: 'vote', seat: turn % 6 === 0 ? null : seat };
     case 'speak': return { t: 'say', text: turn % 4 === 0 ? '' : 'I am only a villager.' };
     case 'witch': return { t: 'witch', save: ask.save, poison: !ask.save && turn % 3 === 0 ? seat : null };
@@ -138,7 +143,7 @@ const linesOf = (g: Posted) => only(g.posts, 'line');
 const asksOf = (g: Posted): WolfAsk[] =>
   only(g.posts, 'ask').map((m) => m.ask).filter((a): a is WolfAsk => a !== null);
 
-const WHYS: Record<WinReason, string> = { wolves: w.winVillage, gods: w.winGods, villagers: w.winVillagers };
+const WHYS: Record<WinReason, string> = { wolves: w.winVillage, gods: w.winGods, villagers: w.winVillagers, lovers: w.winLovers };
 
 /** Who has won when the table looks like `seats` (all roles shown), by 屠边. */
 function verdictOf(seats: readonly WolfSeat[]): { winner: Side; why: WinReason } | null {
@@ -818,7 +823,12 @@ describe('WerewolfRoom', () => {
         const seat = [99, 0, -1, 13][turn % 4] ?? 99;
         switch (ask.kind) {
           case 'kill':
-          case 'check': return { t: 'target', seat };
+          case 'check':
+          case 'model':
+          case 'guard':
+          case 'charm': return { t: 'target', seat };
+          case 'thief': return { t: 'card', index: 0 };
+          case 'couple': return { t: 'pair', seats: [1, 2] };
           case 'vote': return { t: 'vote', seat };
           case 'witch': return { t: 'witch', save: true, poison: seat };
           case 'shoot':
@@ -838,7 +848,7 @@ describe('WerewolfRoom', () => {
   describe('messages that answer nothing', () => {
     const answers: Record<WolfAsk['kind'], WolfIn['t']> = {
       kill: 'target', check: 'target', witch: 'witch', run: 'run', speak: 'say', vote: 'vote', shoot: 'pick',
-      badge: 'pick',
+      badge: 'pick', thief: 'card', couple: 'pair', model: 'target', guard: 'target', charm: 'target',
     };
     const stray: WolfIn[] = [
       { t: 'target', seat: 1 }, { t: 'vote', seat: 2 }, { t: 'vote', seat: null }, { t: 'say', text: 'noise' },
@@ -956,9 +966,9 @@ describe('WerewolfRoom', () => {
       expect(Math.max(...totals)).toBeLessThanOrEqual(MIND_BUDGET);
     });
 
-    eachGame(games, 'starts one mind for a game and lets it go at the end, with no timer left', (g, bad) => {
+    eachGame(games, 'starts one mind for a game and keeps it for a rematch, with no timer left', (g, bad) => {
       if (g.warmed !== 1) bad(`${g.warmed} minds were started`);
-      if (g.closed < 1) bad('the mind was not closed');
+      if (g.closed > 0) bad('the mind was closed at the end');
       if (g.t.clock.live() !== 0) bad('a timer is left');
     });
 

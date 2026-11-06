@@ -18,15 +18,23 @@ export interface WolfLine {
   text: string;
 }
 
-/** `picks` first, then other pets in random order, until there are `count`; the pets that are not out play too. */
+/**
+ * `picks` first, then other pets in random order, until there are `count`; the pets that are not out play too. When
+ * there are more seats than pets, the pets sit twice (a second shuffled round), never twice in a row.
+ */
 export function fillSeats(picks: readonly PetId[], count: number, random: () => number): PetId[] {
-  const seated = picks.slice(0, count);
-  const rest = PET_IDS.filter((id) => !seated.includes(id));
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j] as PetId, rest[i] as PetId];
-  }
-  return [...seated, ...rest].slice(0, count);
+  const seated = [...new Set(picks)].slice(0, count);
+  const shuffled = (ids: readonly PetId[]): PetId[] => {
+    const a = [...ids];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [a[i], a[j]] = [a[j] as PetId, a[i] as PetId];
+    }
+    return a;
+  };
+  const out = [...seated, ...shuffled(PET_IDS.filter((id) => !seated.includes(id)))];
+  while (out.length < count) out.push(...shuffled(PET_IDS));
+  return out.slice(0, count);
 }
 
 /** Every pet that can take a seat, those that are out on the desktop marked. */
@@ -48,6 +56,7 @@ export function wolfText(g: GameWords, seats: number, watchSeats: number): GameT
     abstain: w.abstain, saveHim: w.saveHim('{name}'), poisonHint: w.poisonHint, noPotion: w.noPotion,
     noSelfSave: w.noSelfSave, sendHint: w.sendHint, send: w.send, pass: w.pass, runYes: w.runYes, runNo: w.runNo,
     noShot: w.noShot, tearBadge: w.tearBadge, boomButton: w.boomButton, boomSure: w.boomSure,
+    chatTitle: w.chatTitle, chatHint: w.chatHint, chatSend: w.chatSend, pairHint: w.pairHint, pairOk: w.pairOk,
     phase_night: w.phase.night, phase_sheriff: w.phase.sheriff, phase_talk: w.phase.talk, phase_vote: w.phase.vote,
     phase_over: w.phase.over,
   };
@@ -55,7 +64,10 @@ export function wolfText(g: GameWords, seats: number, watchSeats: number): GameT
 
 /** How the game ended, as one line. */
 export const winLine = (why: WinReason, w: WolfWords): string =>
-  why === 'wolves' ? w.winVillage : why === 'gods' ? w.winGods : w.winVillagers;
+  why === 'wolves' ? w.winVillage
+    : why === 'gods' ? w.winGods
+      : why === 'lovers' ? w.winLovers
+        : w.winVillagers;
 
 /**
  * What the page shows for one thing that happened. `me` is the user's seat; null for a spectator, who is told the same
@@ -105,6 +117,16 @@ export function entryLines(e: Entry, w: WolfWords, name: (seat: number) => strin
     case 'boom': return [sys(w.boomed(name(e.seat)))];
     case 'shot': return [sys(w.shot(name(e.hunter), name(e.target)))];
     case 'over': return [sys(winLine(e.why, w))];
+    case 'thief': return [secret(spectator ? w.thiefActs(name(e.seat), w.role[e.role]) : w.thiefDid(w.role[e.role]))];
+    case 'lovers':
+      if (spectator || me === e.cupid) return [secret(w.coupled(name(e.seats[0]), name(e.seats[1])))];
+      return [secret(w.loverYou(name(e.seats[0] === me ? e.seats[1] : e.seats[0])))];
+    case 'model': return [secret(spectator ? w.modelActs(name(e.seat), name(e.target)) : w.modelDid(name(e.target)))];
+    case 'guard': return [secret(spectator ? w.guardActs(name(e.seat), name(e.target)) : w.guardDid(name(e.target)))];
+    case 'charm': return [secret(spectator ? w.charmActs(name(e.seat), name(e.target)) : w.charmDid(name(e.target)))];
+    case 'turned':
+      return [secret(spectator ? w.turnedSpec(name(e.seat)) : w.turned(names(e.wolves.filter((s) => s !== me))))];
+    case 'follow': return [sys(e.cause === 'grief' ? w.grief(name(e.seat), name(e.of)) : w.charmDied(name(e.seat), name(e.of)))];
   }
 }
 
@@ -130,6 +152,11 @@ export function wolfAsk(
     }
     case 'shoot': return plain('shoot', w.askShoot);
     case 'badge': return plain('badge', w.askBadge);
+    case 'thief': return { ...plain('thief', w.askThief), cards: q.cards.map((c) => w.role[c]) };
+    case 'couple': return plain('couple', w.askCouple);
+    case 'model': return plain('model', w.askModel);
+    case 'guard': return plain('guard', w.askGuard);
+    case 'charm': return plain('charm', w.askCharm);
   }
 }
 
@@ -143,8 +170,13 @@ export const roleName = (role: Role | null, w: WolfWords): string | null => (rol
 /** What the user's message answers, if it answers the question being asked. */
 export function wolfAnswer(q: Question, m: WolfIn): Answer | null {
   switch (q.kind) {
+    case 'thief': return m.t === 'card' ? { kind: 'card', index: m.index } : null;
+    case 'couple': return m.t === 'pair' ? { kind: 'pair', seats: m.seats } : null;
     case 'kill':
-    case 'check': return m.t === 'target' ? { kind: 'target', seat: m.seat } : null;
+    case 'check':
+    case 'model':
+    case 'guard':
+    case 'charm': return m.t === 'target' ? { kind: 'target', seat: m.seat } : null;
     case 'vote': return m.t === 'vote' ? { kind: 'vote', seat: m.seat } : null;
     case 'speak': return m.t === 'say' ? { kind: 'text', text: m.text } : null;
     case 'witch': return m.t === 'witch' ? { kind: 'witch', save: m.save, poison: m.poison } : null;
@@ -170,6 +202,7 @@ export function phrasesOf(w: WolfWords, random: () => number): Phrases {
     claimWitch: (saved) => pick(w.claimWitch(saved)),
     claimHunter: () => pick(w.claimHunter),
     claimIdiot: () => pick(w.claimIdiot),
+    claimGuard: () => pick(w.claimGuard),
     last: (suspect) => pick(w.last(suspect)),
     join: (parts) => w.sentences([...parts]),
   };

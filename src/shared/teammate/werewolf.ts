@@ -1,5 +1,7 @@
 /**
- * Werewolf for twelve, the standard board: four wolves, four villagers and four gods (seer, witch, hunter, idiot).
+ * Werewolf, in two boards. The classic one is for twelve: four wolves, four villagers and four gods (seer, witch,
+ * hunter, idiot). The crescent one is for eighteen, with two more cards under the table for the thief: guard, cupid,
+ * thief, wild child, wolf beauty and hidden wolf join the usual roles.
  * This is the pure part, the rules and what each player may know. What a computer player does is in
  * `werewolfPlay.ts` and `werewolfMind.ts`; `werewolfRun.ts` plays a game through it.
  */
@@ -7,22 +9,45 @@
 import type { PetId } from './pet';
 import { cleanLine } from './petText';
 
-export type Role = 'wolf' | 'villager' | 'seer' | 'witch' | 'hunter' | 'idiot';
+export type Role =
+  | 'wolf' | 'villager' | 'seer' | 'witch' | 'hunter' | 'idiot'
+  | 'guard' | 'cupid' | 'thief' | 'wildchild' | 'beauty' | 'hidden';
 export type Who = 'user' | PetId;
-export type Side = 'wolves' | 'village';
-/** How a player died: the wolves' knife, the witch's poison, a vote, the hunter's shot or a self-destruct. */
-export type Cause = 'wolves' | 'poison' | 'exile' | 'shot' | 'boom';
+export type Mode = 'classic' | 'crescent';
+/** The lovers win alone only when one of them is a wolf and the other is not, and nobody else is left. */
+export type Side = 'wolves' | 'village' | 'lovers';
+/**
+ * How a player died: the wolves' knife, the witch's poison, a vote, the hunter's shot, a self-destruct, a broken heart
+ * (the other lover died) or the wolf beauty's charm (she died).
+ */
+export type Cause = 'wolves' | 'poison' | 'exile' | 'shot' | 'boom' | 'grief' | 'charm';
 /** Which side's goal was met: every wolf out (village), or every god or every villager out (wolves). */
-export type WinReason = 'wolves' | 'gods' | 'villagers';
+export type WinReason = 'wolves' | 'gods' | 'villagers' | 'lovers';
 /** What a speech is: the day's talk, a sheriff candidate's, a tie's second round, or a dead player's last words. */
 export type Talk = 'day' | 'campaign' | 'pk' | 'last';
 
+/** The seats of the classic board; the crescent board has `CRESCENT_SEATS`. */
 export const SEATS = 12;
+export const CRESCENT_SEATS = 18;
+export const MODES: readonly Mode[] = ['classic', 'crescent'];
+export const isMode = (raw: unknown): raw is Mode => (MODES as readonly unknown[]).includes(raw);
+export const seatsOf = (mode: Mode): number => (mode === 'crescent' ? CRESCENT_SEATS : SEATS);
 export const ROLES: readonly Role[] = [
   'wolf', 'wolf', 'wolf', 'wolf', 'villager', 'villager', 'villager', 'villager', 'seer', 'witch', 'hunter', 'idiot',
 ];
-const GODS: readonly Role[] = ['seer', 'witch', 'hunter', 'idiot'];
+export const CRESCENT_ROLES: readonly Role[] = [
+  'seer', 'witch', 'hunter', 'guard', 'cupid', 'thief', 'wildchild', 'beauty', 'hidden', 'wolf', 'wolf',
+  'villager', 'villager', 'villager', 'villager', 'villager', 'villager', 'villager',
+];
+/** The two cards the thief chooses between: one of them is a wolf, as in the usual rules. */
+export const CRESCENT_EXTRAS: readonly Role[] = ['wolf', 'villager'];
+export const rolesOf = (mode: Mode): readonly Role[] => (mode === 'crescent' ? CRESCENT_ROLES : ROLES);
+const GODS: readonly Role[] = ['seer', 'witch', 'hunter', 'idiot', 'guard'];
 export const isGod = (role: Role): boolean => GODS.includes(role);
+/** Every role that wins with the wolves. The hidden wolf is one: the seer sees it as good. */
+export const isWolfSide = (role: Role): boolean => role === 'wolf' || role === 'beauty' || role === 'hidden';
+/** The wolves that may blow themselves up by day. */
+export const canBoom = (role: Role): boolean => role === 'wolf' || role === 'beauty';
 /** The roles a player may claim in a speech. */
 export const CLAIMABLE: readonly Role[] = GODS;
 /** The longest thing a player says in one turn. */
@@ -89,6 +114,16 @@ export type Entry =
   | { kind: 'flip'; seat: number }
   | { kind: 'boom'; seat: number }
   | { kind: 'shot'; hunter: number; target: number }
+  /** The thief took one of the two cards under the table, and is that role now. */
+  | { kind: 'thief'; seat: number; cards: Role[]; role: Role }
+  | { kind: 'lovers'; cupid: number; seats: [number, number] }
+  | { kind: 'model'; seat: number; target: number }
+  | { kind: 'guard'; seat: number; target: number }
+  | { kind: 'charm'; seat: number; target: number }
+  /** The wild child's model died: he is a wolf now; `wolves` are the wolves he and they now know. */
+  | { kind: 'turned'; seat: number; wolves: number[] }
+  /** `seat` died with `of`: of grief for a lover, or charmed by the wolf beauty. */
+  | { kind: 'follow'; seat: number; of: number; cause: 'grief' | 'charm' }
   | { kind: 'over'; winner: Side; why: WinReason };
 
 export interface Logged {
@@ -107,9 +142,17 @@ export type Question =
   /** `among` limits the vote to those seats: the candidates, or the players a tie left. */
   | { kind: 'vote'; why: 'sheriff' | 'exile'; among: number[] | null }
   | { kind: 'shoot' }
-  | { kind: 'badge' };
+  | { kind: 'badge' }
+  /** The thief: which of the two cards under the table to take. */
+  | { kind: 'thief'; cards: Role[] }
+  | { kind: 'couple' }
+  | { kind: 'model' }
+  | { kind: 'guard' }
+  | { kind: 'charm' };
 
 export type Answer =
+  | { kind: 'card'; index: number }
+  | { kind: 'pair'; seats: [number, number] }
   | { kind: 'target'; seat: number }
   | { kind: 'witch'; save: boolean; poison: number | null }
   | { kind: 'run'; run: boolean }
@@ -161,27 +204,43 @@ export class WerewolfGame {
   antidote = true;
   poison = true;
   sheriff: number | null = null;
+  /** The two the cupid joined; each dies of grief with the other. */
+  lovers: [number, number] | null = null;
+  /** The wild child's model: when it dies, the wild child becomes a wolf. */
+  model: number | null = null;
+  /** Whom the guard guarded last night, who may not be guarded again tonight. */
+  lastGuard: number | null = null;
+  /** The players the wolf beauty charmed: they die with her. */
+  readonly charmed: number[] = [];
+  /** The two cards under the table, for the thief. */
+  extras: Role[] = [];
   private result: { winner: Side; why: WinReason } | null = null;
 
-  private constructor(players: Player[]) {
+  private constructor(players: Player[], readonly mode: Mode) {
     this.players = players;
   }
 
-  /** Deals the twelve players their seats and roles, both shuffled so the user is not always the same one. */
-  static deal(whos: readonly Who[], random: () => number): WerewolfGame {
-    if (whos.length !== SEATS) throw new Error(`A game needs ${SEATS} players.`);
-    const roles = shuffled(ROLES, random);
-    return WerewolfGame.seat(shuffled(whos, random).map((who, i) => ({ who, role: roles[i] as Role })));
+  /** Deals the players their seats and roles, both shuffled so the user is not always the same one. */
+  static deal(whos: readonly Who[], random: () => number, mode: Mode = 'classic'): WerewolfGame {
+    const seats = seatsOf(mode);
+    if (whos.length !== seats) throw new Error(`A game needs ${seats} players.`);
+    const roles = shuffled(rolesOf(mode), random);
+    return WerewolfGame.seat(
+      shuffled(whos, random).map((who, i) => ({ who, role: roles[i] as Role })), mode,
+    );
   }
 
   /** Seats the players in the order given, each told its role and each wolf the other wolves. */
-  static seat(dealt: readonly { who: Who; role: Role }[]): WerewolfGame {
+  static seat(dealt: readonly { who: Who; role: Role }[], mode: Mode = 'classic'): WerewolfGame {
     const game = new WerewolfGame(dealt.map((d, i) => ({
       seat: i + 1, who: d.who, role: d.role, alive: true, flipped: false, boomed: false,
-    })));
+    })), mode);
+    if (mode === 'crescent') game.extras = [...CRESCENT_EXTRAS];
     for (const p of game.players) game.record([p.seat], { kind: 'start', seat: p.seat, role: p.role });
-    const wolves = game.players.filter((p) => p.role === 'wolf').map((p) => p.seat);
-    game.record(wolves, { kind: 'wolves', seats: wolves });
+    // The wolves know one another but not the hidden wolf, who knows them.
+    const wolves = game.players.filter((p) => p.role === 'wolf' || p.role === 'beauty').map((p) => p.seat);
+    const hidden = game.players.filter((p) => p.role === 'hidden').map((p) => p.seat);
+    game.record([...wolves, ...hidden], { kind: 'wolves', seats: wolves });
     return game;
   }
 
@@ -196,7 +255,30 @@ export class WerewolfGame {
   }
 
   wolves(): Player[] {
-    return this.players.filter((p) => p.alive && p.role === 'wolf');
+    return this.players.filter((p) => p.alive && isWolfSide(p.role));
+  }
+
+  /** The wolves that choose the night's victim: the hidden wolf joins only when no other wolf is left. */
+  killers(): Player[] {
+    const open = this.players.filter((p) => p.alive && (p.role === 'wolf' || p.role === 'beauty'));
+    return open.length > 0 ? open : this.players.filter((p) => p.alive && p.role === 'hidden');
+  }
+
+  /** The wolves that may blow themselves up by day. */
+  boomers(): Player[] {
+    return this.players.filter((p) => p.alive && canBoom(p.role));
+  }
+
+  /** What the seer sees: a wolf or a wolf beauty, never the hidden wolf. */
+  looksWolf(seat: number): boolean {
+    const role = this.player(seat).role;
+    return role === 'wolf' || role === 'beauty';
+  }
+
+  /** The other lover, to a lover. */
+  partnerOf(seat: number): number | null {
+    if (!this.lovers || !this.lovers.includes(seat)) return null;
+    return this.lovers[0] === seat ? this.lovers[1] : this.lovers[0];
   }
 
   seatOfUser(): number | null {
@@ -207,16 +289,22 @@ export class WerewolfGame {
     this.log.push({ to, entry });
   }
 
-  /** Who has won as things stand, and why: no wolf is left, or no god is, or no villager is. */
+  /** Who has won as things stand, and why: no wolf is left, or no god is, or no villager is, or the lovers alone are. */
   decided(): { winner: Side; why: WinReason } | null {
+    const alive = this.alive();
+    if (this.lovers) {
+      const [a, b] = this.lovers.map((s) => this.player(s));
+      if (a && b && a.alive && b.alive && isWolfSide(a.role) !== isWolfSide(b.role) && alive.length === 2) {
+        return { winner: 'lovers', why: 'lovers' };
+      }
+    }
     let wolves = 0;
     let villagers = 0;
     let gods = 0;
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      if (p.role === 'wolf') wolves++;
-      else if (p.role === 'villager') villagers++;
-      else gods++;
+    for (const p of alive) {
+      if (isWolfSide(p.role)) wolves++;
+      else if (isGod(p.role)) gods++;
+      else villagers++;
     }
     // If the last wolf and the last god fall together, the village has the last word.
     if (wolves === 0) return { winner: 'village', why: 'wolves' };
@@ -256,23 +344,87 @@ export class WerewolfGame {
     return { kind: 'witch', victim: this.antidote ? victim : null, save: this.canSave(victim), poison: this.poison };
   }
 
-  /** Ends the night: the wolves' victim dies unless saved, and so does whoever was poisoned; one potion a night. */
-  endNight(night: { kill: number | null; saved: boolean; poisoned: number | null }): number[] {
+  /**
+   * Ends the night: the wolves' victim dies unless saved or guarded (both together kill it), and so does whoever was
+   * poisoned; one potion a night. Whoever dies of grief or a charm with them is named at dawn too.
+   */
+  endNight(night: { kill: number | null; saved: boolean; poisoned: number | null; guarded?: number | null }): number[] {
+    const before = this.deaths.length;
     const dead = new Map<number, Cause>();
-    if (night.kill !== null && !night.saved) dead.set(night.kill, 'wolves');
+    const guarded = night.kill !== null && night.guarded === night.kill;
+    if (night.kill !== null && night.saved === guarded) dead.set(night.kill, 'wolves');
     if (night.poisoned !== null && !night.saved) dead.set(night.poisoned, 'poison');
-    const list = [...dead.keys()].sort((a, b) => a - b);
-    for (const seat of list) this.die(seat, dead.get(seat) ?? 'wolves');
+    for (const seat of [...dead.keys()].sort((a, b) => a - b)) this.die(seat, dead.get(seat) ?? 'wolves');
+    const list = this.deaths.slice(before).map((d) => d.seat).sort((a, b) => a - b);
     this.record('all', { kind: 'dawn', day: this.day, died: list });
     return list;
   }
 
-  /** A player dies; what follows from it (words, shot, badge) waits in `deaths`. */
+  /** A player dies; what follows from it (words, shot, badge) waits in `deaths`, and who dies with it dies now. */
   die(seat: number, cause: Cause): void {
     const p = this.player(seat);
     if (!p.alive) return;
     p.alive = false;
     this.deaths.push({ seat, cause, day: this.day });
+    if (p.role === 'beauty') {
+      for (const c of this.charmed) {
+        if (!this.player(c).alive) continue;
+        this.record('all', { kind: 'follow', seat: c, of: seat, cause: 'charm' });
+        this.die(c, 'charm');
+      }
+    }
+    const partner = this.partnerOf(seat);
+    if (partner !== null && this.player(partner).alive) {
+      this.record('all', { kind: 'follow', seat: partner, of: seat, cause: 'grief' });
+      this.die(partner, 'grief');
+    }
+    if (this.model === seat) this.turn();
+  }
+
+  /** The wild child's model is dead: he becomes a wolf, and he and the wolves are told of one another. */
+  private turn(): void {
+    const child = this.players.find((q) => q.alive && q.role === 'wildchild');
+    if (!child) return;
+    const old = this.players.filter((q) => q.alive && (q.role === 'wolf' || q.role === 'beauty')).map((q) => q.seat);
+    child.role = 'wolf';
+    this.record([child.seat, ...old], { kind: 'turned', seat: child.seat, wolves: [...old, child.seat] });
+  }
+
+  /** The thief takes the card `index` of the two under the table, and is that role from now on. */
+  steal(seat: number, index: number): Role {
+    const p = this.player(seat);
+    const cards = [...this.extras];
+    const role = cards[index] ?? cards[0] ?? 'villager';
+    p.role = role;
+    this.record([seat], { kind: 'thief', seat, cards, role });
+    if (role === 'wolf') {
+      const wolves = this.players.filter((q) => q.alive && (q.role === 'wolf' || q.role === 'beauty')).map((q) => q.seat);
+      const hidden = this.players.filter((q) => q.role === 'hidden').map((q) => q.seat);
+      this.record(wolves.filter((s) => s !== seat), { kind: 'wolves', seats: wolves });
+      this.record([seat, ...hidden], { kind: 'wolves', seats: wolves.filter((s) => s !== seat) });
+    }
+    return role;
+  }
+
+  /** The cupid joins two players, who learn of each other. */
+  couple(cupid: number, a: number, b: number): void {
+    this.lovers = [a, b];
+    this.record([...new Set([cupid, a, b])], { kind: 'lovers', cupid, seats: [a, b] });
+  }
+
+  adopt(seat: number, target: number): void {
+    this.model = target;
+    this.record([seat], { kind: 'model', seat, target });
+  }
+
+  guardNight(seat: number, target: number): void {
+    this.lastGuard = target;
+    this.record([seat], { kind: 'guard', seat, target });
+  }
+
+  charm(seat: number, target: number): void {
+    if (!this.charmed.includes(target)) this.charmed.push(target);
+    this.record([seat], { kind: 'charm', seat, target });
   }
 
   nextDeath(): Death | null {
@@ -309,7 +461,7 @@ export class WerewolfGame {
   /** A wolf blows itself up: it dies at once, its role is out, and the day is over. */
   boom(seat: number): void {
     const p = this.player(seat);
-    if (p.role !== 'wolf' || !p.alive) throw new Error(`Player ${seat} cannot self-destruct.`);
+    if (!canBoom(p.role) || !p.alive) throw new Error(`Player ${seat} cannot self-destruct.`);
     p.boomed = true;
     this.record('all', { kind: 'boom', seat });
     this.die(seat, 'boom');
@@ -410,6 +562,11 @@ export class WerewolfGame {
       }
       case 'shoot':
       case 'badge': return others;
+      case 'couple':
+      case 'guard': return q.kind === 'guard' ? alive.filter((s) => s !== this.lastGuard) : alive;
+      case 'model':
+      case 'charm': return others;
+      case 'thief':
       case 'run':
       case 'speak': return [];
     }

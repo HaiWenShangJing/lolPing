@@ -5,7 +5,7 @@ import { MAX_CARDS } from '../../src/shared/teammate/doudizhuCards';
 import { MAX_BID } from '../../src/shared/teammate/doudizhuTypes';
 import { CARD_NAMES, DECK_SIZE } from '../../src/shared/teammate/sanguoshaCards';
 import { HERO_IDS, SKILLS } from '../../src/shared/teammate/sanguoshaHeroes';
-import { SEATS } from '../../src/shared/teammate/werewolf';
+import { CRESCENT_SEATS, SEATS } from '../../src/shared/teammate/werewolf';
 
 const [a, b, c] = PET_IDS as readonly PetId[];
 const everyone: PetId[] = PET_IDS.slice(0, SEATS);
@@ -76,6 +76,22 @@ describe('parseWolfIn', () => {
     expect(parseWolfIn({ t: 'start', pets: [a] })).toEqual({ t: 'start', pets: [a], play: true });
   });
 
+  it('reads the crescent table: up to seventeen pets for a user who plays, and the new messages', () => {
+    const many = [...PET_IDS];
+    expect(parseWolfIn({ t: 'start', pets: many, mode: 'crescent' })).toEqual({ t: 'start', pets: many, play: true, mode: 'crescent' });
+    expect(parseWolfIn({ t: 'start', pets: [a], mode: 'classic' })).toEqual({ t: 'start', pets: [a], play: true, mode: 'classic' });
+    expect(parseWolfIn({ t: 'start', pets: [a], mode: 'fancy' })).toBeNull();
+    expect(parseWolfIn({ t: 'target', seat: CRESCENT_SEATS })).toEqual({ t: 'target', seat: CRESCENT_SEATS });
+    expect(parseWolfIn({ t: 'card', index: 1 })).toEqual({ t: 'card', index: 1 });
+    expect(parseWolfIn({ t: 'card', index: 2 })).toBeNull();
+    expect(parseWolfIn({ t: 'pair', seats: [3, 18] })).toEqual({ t: 'pair', seats: [3, 18] });
+    expect(parseWolfIn({ t: 'pair', seats: [3, 3] })).toBeNull();
+    expect(parseWolfIn({ t: 'pair', seats: [3] })).toBeNull();
+    expect(parseWolfIn({ t: 'chat', text: '  gg  ' })).toEqual({ t: 'chat', text: 'gg' });
+    expect(parseWolfIn({ t: 'chat', text: '   ' })).toBeNull();
+    expect(parseWolfIn({ t: 'chat', text: 'x'.repeat(900) })).toEqual({ t: 'chat', text: 'x'.repeat(400) });
+  });
+
   it('refuses a start whose `play` is not a boolean', () => {
     for (const play of ['yes', 1, 0, null, [], {}]) {
       expect(parseWolfIn({ t: 'start', pets: [a], play }), JSON.stringify(play)).toBeNull();
@@ -127,7 +143,7 @@ describe('parseWolfIn', () => {
   });
 
   it('refuses seats that are not at the table', () => {
-    const strange = [0, -1, SEATS + 1, 99, 1.5, NaN, Infinity, '2', undefined, true, [], {}];
+    const strange = [0, -1, CRESCENT_SEATS + 1, 99, 1.5, NaN, Infinity, '2', undefined, true, [], {}];
     for (const seat of strange) {
       const shown = String(seat);
       expect(parseWolfIn({ t: 'target', seat }), `target ${shown}`).toBeNull();

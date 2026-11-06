@@ -27,7 +27,7 @@ export class GameCenter {
     this.scenes = new SceneWindow(services);
     this.wolfWindow = new GameWindow<WolfIn>({
       page: WEREWOLF_PAGE, title: () => services.words().g.werewolfTitle, width: 1040, height: 680,
-      parse: (raw) => parseWolfIn(raw, SEATS), onReady: () => this.wolf.lobby(), onMessage: (m) => this.wolf.on(m),
+      parse: (raw) => parseWolfIn(raw), onReady: () => this.wolf.lobby(), onMessage: (m) => this.wolf.on(m),
       onClosed: () => this.wolf.stop(),
     });
     this.sgsWindow = new GameWindow<SgsIn>({

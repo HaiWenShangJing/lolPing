@@ -26,6 +26,7 @@ const say: Phrases = {
   claimWitch: (saved) => `witch ${saved ?? '-'}`,
   claimHunter: () => 'hunter',
   claimIdiot: () => 'idiot',
+  claimGuard: () => 'guard',
   last: (s) => `last ${s ?? '-'}`,
   join: (parts) => parts.join(' | '),
 };
@@ -51,7 +52,12 @@ function legal(g: WerewolfGame, seat: number, q: Question, a: Answer): boolean {
   const options = g.options(seat, q);
   switch (q.kind) {
     case 'kill':
-    case 'check': return a.kind === 'target' && options.includes(a.seat);
+    case 'check':
+    case 'model':
+    case 'guard':
+    case 'charm': return a.kind === 'target' && options.includes(a.seat);
+    case 'thief': return a.kind === 'card';
+    case 'couple': return a.kind === 'pair' && options.includes(a.seats[0]) && options.includes(a.seats[1]);
     case 'witch': {
       const poisonOk = a.kind === 'witch' && (a.poison === null || (q.poison && options.includes(a.poison)));
       return a.kind === 'witch' && (!a.save || q.save) && poisonOk;

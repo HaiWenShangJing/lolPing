@@ -4,7 +4,7 @@
  */
 
 import {
-  noMeaning, pick, type Answer, type Check, type Entry, type Meaning, type Player, type Question, type Role, type Talk,
+  isWolfSide, noMeaning, pick, type Answer, type Check, type Entry, type Meaning, type Player, type Question, type Role, type Talk,
   type WerewolfGame,
 } from './werewolf';
 
@@ -20,6 +20,7 @@ export interface Phrases {
   claimWitch(saved: string | null): string;
   claimHunter(): string;
   claimIdiot(): string;
+  claimGuard(): string;
   /** Last words, pointing at `suspect` when there is one. */
   last(suspect: string | null): string;
   join(parts: readonly string[]): string;
@@ -72,7 +73,7 @@ interface Mind {
 function think(game: WerewolfGame, seat: number): Mind {
   const me = game.player(seat);
   const { entries } = game.viewFrom(seat, 0);
-  const isWolf = me.role === 'wolf';
+  const isWolf = isWolfSide(me.role);
   const wolves = new Set<number>();
   const good = new Set<number>();
   for (const e of entries) {
@@ -81,6 +82,11 @@ function think(game: WerewolfGame, seat: number): Mind {
     else if (e.kind === 'witchDid' && e.seat === seat && e.saved !== null) good.add(e.saved);
     else if (e.kind === 'flip') good.add(e.seat);
     else if (e.kind === 'boom') wolves.add(e.seat);
+    else if (e.kind === 'turned') for (const s of [...e.wolves, e.seat]) wolves.add(s);
+    else if (e.kind === 'lovers' && e.seats.includes(seat)) {
+      // A lover is never a target: for a wolf it is an ally, for the others a player known to be good.
+      for (const s of e.seats) if (s !== seat) (isWolf ? wolves : good).add(s);
+    }
   }
   wolves.delete(seat);
 
@@ -192,6 +198,7 @@ function best(
 
 const RUN_CHANCE: Record<Role, number> = {
   seer: 0.85, wolf: 0.45, hunter: 0.4, witch: 0.25, villager: 0.25, idiot: 0.1,
+  guard: 0.3, cupid: 0.25, thief: 0.25, wildchild: 0.25, beauty: 0.4, hidden: 0.15,
 };
 /** How much suspicion makes a case that a good player will vote on. */
 const CASE = 1.5;
@@ -234,7 +241,7 @@ function voteAnswer(
   const options = game.options(seat, q);
   if (options.length === 0) return { kind: 'vote', seat: null };
   const mind = think(game, seat);
-  const isWolf = mind.me.role === 'wolf';
+  const isWolf = isWolfSide(mind.me.role);
   if (q.why === 'sheriff') {
     const partners = options.filter((s) => mind.wolves.has(s));
     if (isWolf && partners.length > 0 && random() < 0.6) return { kind: 'vote', seat: pick(partners, random) ?? null };
@@ -256,7 +263,7 @@ function badgeAnswer(game: WerewolfGame, seat: number, random: () => number): An
   if (options.length === 0) return { kind: 'pick', seat: null };
   const mind = think(game, seat);
   const partners = options.filter((s) => mind.wolves.has(s));
-  if (mind.me.role === 'wolf') {
+  if (isWolfSide(mind.me.role)) {
     if (partners.length > 0 && random() < 0.55) return { kind: 'pick', seat: pick(partners, random) ?? null };
     const rest = options.filter((s) => !mind.wolves.has(s));
     return { kind: 'pick', seat: pick(rest.length > 0 ? rest : options, random) ?? null };
@@ -331,10 +338,15 @@ function speech(
       case 'hunter':
         if (random() >= (talk === 'pk' ? 0.7 : last ? 0.6 : accused ? 0.5 : 0.1)) return null;
         return { part: say.claimHunter(), meaning: { claim: 'hunter' } };
+      case 'guard':
+        if (random() >= (last ? 0.6 : accused ? 0.4 : 0.08)) return null;
+        return { part: say.claimGuard(), meaning: { claim: 'guard' } };
       case 'idiot':
         if (random() >= (talk === 'pk' ? 0.6 : last ? 0.7 : accused ? 0.4 : 0.05)) return null;
         return { part: say.claimIdiot(), meaning: { claim: 'idiot' } };
-      case 'wolf': {
+      case 'wolf':
+      case 'beauty':
+      case 'hidden': {
         // Once the real seer has spoken, a wolf may stand up against it, but only one wolf at a time.
         const standing = mind.claims.some((c) => c.role === 'seer' && mind.wolves.has(c.seat));
         const threatened = mind.trusted !== null && accused;
@@ -350,10 +362,10 @@ function speech(
 
   const wolfFound = claim?.meaning.checks?.find((c) => c.wolf && living.includes(c.seat))?.seat;
   // A wolf that does not stand against the seer has no reason to go after him, and doing so gives it away.
-  const standingFake = me.role === 'wolf' && (claim?.meaning.claim === 'seer' || mine?.role === 'seer');
-  const leaveSeer = me.role === 'wolf' && !standingFake && random() < 0.75 ? mind.trusted : null;
+  const standingFake = isWolfSide(me.role) && (claim?.meaning.claim === 'seer' || mine?.role === 'seer');
+  const leaveSeer = isWolfSide(me.role) && !standingFake && random() < 0.75 ? mind.trusted : null;
   const suspectable = living.filter(
-    (s) => s !== leaveSeer && (me.role === 'wolf' ? !mind.wolves.has(s) : scoreOf(mind, s) > -50),
+    (s) => s !== leaveSeer && (isWolfSide(me.role) ? !mind.wolves.has(s) : scoreOf(mind, s) > -50),
   );
   const worst = best(suspectable, (s) => scoreOf(mind, s), random);
   const suspect = wolfFound ?? (worst !== null && (scoreOf(mind, worst) >= 0.6 || random() < 0.3) ? worst : null);
@@ -364,7 +376,7 @@ function speech(
   if (claim) parts.push(claim.part);
   if (talk === 'last') parts.push(say.last(suspect === null ? null : nameOf(suspect)));
   else if (suspect !== null) parts.push(say.accuse(nameOf(suspect)));
-  else if (mind.trusted !== null && me.role !== 'wolf' && random() < 0.5) parts.push(say.trust(nameOf(mind.trusted)));
+  else if (mind.trusted !== null && !isWolfSide(me.role) && random() < 0.5) parts.push(say.trust(nameOf(mind.trusted)));
   else parts.push(random() < 0.5 ? say.innocent() : say.quiet());
   return { kind: 'text', text: say.join(parts.slice(0, 3)), meaning: { ...noMeaning(), ...claim?.meaning, suspect } };
 }
@@ -386,6 +398,34 @@ export function fallbackAnswer(
     case 'vote': return voteAnswer(game, seat, q, random);
     case 'shoot': return shootAnswer(game, seat, random);
     case 'badge': return badgeAnswer(game, seat, random);
+    case 'thief': {
+      // A wolf card is worth taking about half the time; the rest keep the quiet life.
+      const wolf = q.cards.indexOf('wolf');
+      return { kind: 'card', index: wolf >= 0 && random() < 0.55 ? wolf : Math.max(0, q.cards.findIndex((c) => c !== 'wolf')) };
+    }
+    case 'couple': {
+      const options = game.options(seat, q);
+      const a = pick(options, random) ?? seat;
+      const b = pick(options.filter((s) => s !== a), random) ?? a;
+      return { kind: 'pair', seats: [a, b] };
+    }
+    case 'model': {
+      const mind = think(game, seat);
+      const options = game.options(seat, q);
+      return { kind: 'target', seat: best(options, (s) => -scoreOf(mind, s), random, 1) ?? options[0] ?? seat };
+    }
+    case 'guard': {
+      const mind = think(game, seat);
+      const options = game.options(seat, q);
+      const sure = mind.trusted !== null && options.includes(mind.trusted) && random() < 0.6 ? mind.trusted : null;
+      return { kind: 'target', seat: sure ?? best(options, (s) => -Math.abs(scoreOf(mind, s)), random, 2) ?? seat };
+    }
+    case 'charm': {
+      const mind = think(game, seat);
+      const options = game.options(seat, q).filter((s) => !mind.wolves.has(s));
+      const sure = mind.trusted !== null && options.includes(mind.trusted) ? mind.trusted : null;
+      return { kind: 'target', seat: sure ?? best(options, (s) => scoreOf(mind, s), random, 2) ?? game.options(seat, q)[0] ?? seat };
+    }
   }
 }
 

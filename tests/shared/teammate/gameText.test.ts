@@ -102,6 +102,7 @@ describe.each(LANGS)('the words of the werewolf page in %s', (_, g) => {
     'title', 'start', 'again', 'mindsOn', 'mindsOff', 'rules', 'modePlay', 'modeWatch', 'pickPlay', 'pickWatch',
     'watching', 'out', 'sheriff', 'flipped', 'thinking', 'waiting', 'abstain', 'saveHim', 'poisonHint', 'noPotion',
     'noSelfSave', 'sendHint', 'send', 'pass', 'runYes', 'runNo', 'noShot', 'tearBadge', 'boomButton', 'boomSure',
+    'chatTitle', 'chatHint', 'chatSend', 'pairHint', 'pairOk',
     'phase_night', 'phase_sheriff', 'phase_talk', 'phase_vote', 'phase_over',
   ];
 
@@ -420,7 +421,8 @@ describe('what the user\'s message answers', () => {
   ];
   const FITS: Record<Question['kind'], WolfIn['t'][]> = {
     kill: ['target'], check: ['target'], witch: ['witch'], run: ['run'], speak: ['say'], vote: ['vote'],
-    shoot: ['pick'], badge: ['pick'],
+    shoot: ['pick'], badge: ['pick'], thief: ['card'], couple: ['pair'], model: ['target'], guard: ['target'],
+    charm: ['target'],
   };
 
   it('is an answer only to the question it fits, and nothing else is an answer at all', () => {

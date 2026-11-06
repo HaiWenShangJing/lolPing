@@ -1349,6 +1349,7 @@ describe('two hundred games played by the rules alone', () => {
     const { wolves, villagers, gods } = standing(p.game);
     const holds = {
       wolves: wolves === 0, gods: gods === 0 && wolves > 0, villagers: villagers === 0 && gods > 0 && wolves > 0,
+      lovers: false,
     };
     if (!holds[last.why]) bad(`${last.why} won with ${wolves} wolves, ${villagers} villagers and ${gods} gods left`);
     if ((last.why === 'wolves') !== (p.winner === 'village')) bad('the reason belongs to the other side');

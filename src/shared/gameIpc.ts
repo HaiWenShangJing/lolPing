@@ -13,7 +13,7 @@ import { SKILLS, isHeroId, type SkillId } from './teammate/sanguoshaHeroes';
 import type { CardsWhy, Phase as SgsPhase, Reply, Size, SkillOption, Use, Winner } from './teammate/sanguoshaTypes';
 import { isSize } from './teammate/sanguoshaTypes';
 import type { CardView, HeroInfo, SeatView } from './teammate/sanguoshaView';
-import { SEATS, type Role, type Side } from './teammate/werewolf';
+import { CRESCENT_SEATS, SEATS, isMode, seatsOf, type Mode, type Role, type Side } from './teammate/werewolf';
 import type { Phase } from './teammate/werewolfRun';
 
 /** `msg`: main → page. `send`: page → main. */
@@ -46,6 +46,19 @@ export interface GameLobby {
   minds: boolean;
   /** The sizes of table to choose from, for a game that has more than one; a table of `n` seats `n - 1` pets. */
   sizes?: number[];
+  /** The kinds of game to choose from, for a game that has more than one, each with its own table. */
+  variants?: GameVariant[];
+}
+
+export interface GameVariant {
+  id: string;
+  label: string;
+  seats: number;
+  watchSeats: number;
+  /** The rules, told when this variant is chosen. */
+  rules: string;
+  pickPlay: string;
+  pickWatch: string;
 }
 
 /** One seat at the werewolf table. `role` is null while the user may not know it. */
@@ -61,13 +74,18 @@ export interface WolfSeat {
   sheriff: boolean;
   /** The idiot, once revealed: still in the game, but without a vote. */
   flipped: boolean;
+  /** The user is one of the lovers (or the cupid who joined them), and so sees the couple. */
+  lover: boolean;
 }
 
 /** What the user is asked to do now. */
 export interface WolfAsk {
-  kind: 'kill' | 'check' | 'witch' | 'run' | 'speak' | 'vote' | 'shoot' | 'badge';
+  kind: 'kill' | 'check' | 'witch' | 'run' | 'speak' | 'vote' | 'shoot' | 'badge'
+  | 'thief' | 'couple' | 'model' | 'guard' | 'charm';
   title: string;
   options: number[];
+  /** The thief: the names of the two cards under the table. */
+  cards?: string[];
   /** The witch: she may use the antidote on `victim` and/or the poison on one of `options`. */
   save: boolean;
   poison: boolean;
@@ -86,8 +104,12 @@ export type WolfOut =
 
 export type WolfIn =
   /** `play`: the user takes a seat; false to only watch, with every seat played by a pet. */
-  | { t: 'start'; pets: PetId[]; play: boolean }
+  | { t: 'start'; pets: PetId[]; play: boolean; mode?: Mode }
   | { t: 'target'; seat: number }
+  | { t: 'card'; index: 0 | 1 }
+  | { t: 'pair'; seats: [number, number] }
+  /** Talk after the game is over: the pets answer in character, insults allowed. */
+  | { t: 'chat'; text: string }
   | { t: 'vote'; seat: number | null }
   | { t: 'say'; text: string }
   | { t: 'witch'; save: boolean; poison: number | null }
@@ -228,14 +250,14 @@ export function parsePicks(raw: unknown, max: number): PetId[] | null {
 }
 
 const seatNo = (raw: unknown): number | null =>
-  typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= SEATS ? raw : null;
+  typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= CRESCENT_SEATS ? raw : null;
 
 /** A seat or null (the page says "nobody"); undefined for anything else. */
 const seatOrNone = (raw: unknown): number | null | undefined => (raw === null ? null : (seatNo(raw) ?? undefined));
 
 /**
- * What the werewolf page sent; null for anything that is not one of its messages. `table` is the seats at the table:
- * a user who plays takes one of them, so a start names at most one pet fewer than a user who only watches.
+ * What the werewolf page sent; null for anything that is not one of its messages. `table` is the seats at the classic
+ * table: a user who plays takes one of them, so a start names at most one pet fewer than a user who only watches.
  */
 export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null {
   const r = record(raw);
@@ -243,9 +265,23 @@ export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null 
   switch (r.t) {
     case 'start': {
       if (r.play !== undefined && typeof r.play !== 'boolean') return null;
+      if (r.mode !== undefined && !isMode(r.mode)) return null;
       const play = r.play ?? true;
-      const pets = parsePicks(r.pets, play ? table - 1 : table);
-      return pets ? { t: 'start', pets, play } : null;
+      const mode = r.mode;
+      const seats = mode === undefined || mode === 'classic' ? table : seatsOf(mode);
+      const pets = parsePicks(r.pets, play ? seats - 1 : seats);
+      if (!pets) return null;
+      return mode === undefined ? { t: 'start', pets, play } : { t: 'start', pets, play, mode };
+    }
+    case 'card': return r.index === 0 || r.index === 1 ? { t: 'card', index: r.index } : null;
+    case 'pair': {
+      const a = Array.isArray(r.seats) ? seatNo(r.seats[0]) : null;
+      const b = Array.isArray(r.seats) ? seatNo(r.seats[1]) : null;
+      return a !== null && b !== null && a !== b ? { t: 'pair', seats: [a, b] } : null;
+    }
+    case 'chat': {
+      const text = typeof r.text === 'string' ? r.text.trim().slice(0, 400) : '';
+      return text ? { t: 'chat', text } : null;
     }
     case 'target': {
       const seat = seatNo(r.seat);

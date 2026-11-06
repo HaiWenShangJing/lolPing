@@ -7,8 +7,8 @@
  */
 
 import {
-  plurality, SEATS, type Answer, type Entry, type Question, type Role, type Side, type Talk, type WerewolfGame,
-  type Who, type WinReason,
+  canBoom, isWolfSide, plurality, type Answer, type Entry, type Question, type Role, type Side, type Talk,
+  type WerewolfGame, type Who, type WinReason,
 } from './werewolf';
 import type { Mind } from './werewolfMind';
 import { fallbackAnswer, wantsBoom, type Phrases } from './werewolfPlay';
@@ -23,6 +23,8 @@ export interface SeatView {
   role: Role | null;
   sheriff: boolean;
   flipped: boolean;
+  /** The user is a lover, and so is this seat. */
+  lover: boolean;
 }
 
 export type RunEvent =
@@ -120,7 +122,6 @@ const FIRST_MS = 1500;
 export async function runGame(d: RunDeps): Promise<Side> {
   const { game } = d;
   const user = game.seatOfUser();
-  const userWolf = user !== null && game.player(user).role === 'wolf';
   let phase: Phase = 'night';
   let ended = false;
   let electing = false;
@@ -135,19 +136,33 @@ export async function runGame(d: RunDeps): Promise<Side> {
     if (d.stopped()) throw new Stopped();
   };
 
+  /** The seats whose role the user was told: a wolf's partners, and a wild child's new pack. */
+  const known = (): Set<number> => {
+    const seats = new Set<number>();
+    if (user === null) return seats;
+    for (const e of game.viewFrom(user, 0).entries) {
+      if (e.kind === 'wolves') for (const s of e.seats) seats.add(s);
+      else if (e.kind === 'turned') for (const s of e.wolves) seats.add(s);
+    }
+    return seats;
+  };
+
   /** A seat's role as the user may know it: his own, his pack's, a revealed one; all of them for a spectator. */
-  const views = (): SeatView[] => game.players.map((p) => ({
-    seat: p.seat, who: p.who, alive: p.alive, sheriff: game.sheriff === p.seat, flipped: p.flipped,
-    role: user === null || ended || p.seat === user || p.flipped || p.boomed || (userWolf && p.role === 'wolf')
-      ? p.role
-      : null,
-  }));
+  const views = (): SeatView[] => {
+    const pack = known();
+    const partner = user === null ? null : game.partnerOf(user);
+    return game.players.map((p) => ({
+      seat: p.seat, who: p.who, alive: p.alive, sheriff: game.sheriff === p.seat, flipped: p.flipped,
+      lover: user !== null && (p.seat === partner || (p.seat === user && partner !== null)),
+      role: user === null || ended || p.seat === user || p.flipped || p.boomed || pack.has(p.seat) ? p.role : null,
+    }));
+  };
 
   /** Tells the window the table as it stands, when that has changed. */
   const refresh = (): void => {
     const me = user === null ? null : game.player(user);
     const day = phase === 'sheriff' || phase === 'talk' || phase === 'vote';
-    const boom = !settling && me !== null && me.alive && me.role === 'wolf' && day;
+    const boom = !settling && me !== null && me.alive && canBoom(me.role) && day;
     d.boom.arm(boom);
     const players = views();
     const key = JSON.stringify([phase, game.day, boom, players]);
@@ -191,7 +206,16 @@ export async function runGame(d: RunDeps): Promise<Side> {
     const options = game.options(seat, q);
     switch (q.kind) {
       case 'kill':
-      case 'check': return a.kind === 'target' && options.includes(a.seat) ? a : null;
+      case 'check':
+      case 'model':
+      case 'guard':
+      case 'charm': return a.kind === 'target' && options.includes(a.seat) ? a : null;
+      case 'thief': return a.kind === 'card' && (a.index === 0 || a.index === 1) ? a : null;
+      case 'couple': {
+        if (a.kind !== 'pair') return null;
+        const [x, y] = a.seats;
+        return x !== y && options.includes(x) && options.includes(y) ? a : null;
+      }
       case 'witch': {
         if (a.kind !== 'witch' || (a.save && !q.save)) return null;
         return a.poison === null || (q.poison && options.includes(a.poison)) ? a : null;
@@ -222,7 +246,8 @@ export async function runGame(d: RunDeps): Promise<Side> {
   const bot = async (seat: number, q: Question): Promise<Answer> => {
     // Only what takes a while is shown as thought about: speeches, and with minds every question put to one. A night
     // move is not, to a user who plays: who is thinking at night would tell him the wolves, the seer and the witch.
-    const night = q.kind === 'kill' || q.kind === 'check' || q.kind === 'witch';
+    const night = q.kind !== 'speak' && q.kind !== 'run' && q.kind !== 'vote' && q.kind !== 'shoot' &&
+      q.kind !== 'badge';
     const slow = (q.kind === 'speak' || (d.minds && q.kind !== 'run' && q.kind !== 'vote')) &&
       (user === null || !night);
     if (slow) {
@@ -262,7 +287,7 @@ export async function runGame(d: RunDeps): Promise<Side> {
   const maybeBoom = (when: 'campaign' | 'talk' | 'vote'): void => {
     check();
     if (d.boom.take()) throw new Boomed();
-    for (const w of game.wolves()) {
+    for (const w of game.boomers()) {
       if (w.who !== 'user' && wantsBoom(game, w.seat, when, d.random)) throw new Boomed(w.seat);
     }
   };
@@ -321,13 +346,50 @@ export async function runGame(d: RunDeps): Promise<Side> {
 
   const night = async (): Promise<void> => {
     game.startNight();
+    let guarded: number | null = null;
     setPhase('night');
     flush();
     await beat(game.day === 1 ? FIRST_MS : STEP_MS);
 
+    // The crescent roles wake first: the thief, the cupid and the wild child on the first night, the guard every night.
+    if (game.mode === 'crescent') {
+      if (game.day === 1) {
+        const thief = game.alive().find((p) => p.role === 'thief');
+        if (thief) {
+          const a = await answer(thief.seat, { kind: 'thief', cards: [...game.extras] });
+          game.steal(thief.seat, a.kind === 'card' ? a.index : 0);
+          flush();
+          await beat();
+        }
+        const cupid = game.alive().find((p) => p.role === 'cupid');
+        if (cupid) {
+          const a = await answer(cupid.seat, { kind: 'couple' });
+          const [x, y] = a.kind === 'pair'
+            ? a.seats
+            : [cupid.seat, game.alive().find((p) => p.seat !== cupid.seat)?.seat ?? 1];
+          game.couple(cupid.seat, x, y);
+          flush();
+          await beat();
+        }
+        const child = game.alive().find((p) => p.role === 'wildchild');
+        if (child) {
+          game.adopt(child.seat, await target(child.seat, { kind: 'model' }));
+          flush();
+          await beat();
+        }
+      }
+      const guard = game.alive().find((p) => p.role === 'guard');
+      if (guard) {
+        guarded = await target(guard.seat, { kind: 'guard' });
+        game.guardNight(guard.seat, guarded);
+        flush();
+        await beat();
+      }
+    }
+
     // The computer wolves propose in turn, each told what its partners proposed; a user wolf has the last word.
-    const wolves = game.wolves();
-    const pack = wolves.map((w) => w.seat);
+    const wolves = game.killers();
+    const pack = game.wolves().map((w) => w.seat);
     const proposals: number[] = [];
     for (const w of wolves) {
       if (w.who === 'user') continue;
@@ -346,9 +408,15 @@ export async function runGame(d: RunDeps): Promise<Side> {
     await beat();
 
     const seer = game.alive().find((p) => p.role === 'seer');
+    const beauty = game.alive().find((p) => p.role === 'beauty');
+    if (beauty && game.options(beauty.seat, { kind: 'charm' }).length > 0) {
+      game.charm(beauty.seat, await target(beauty.seat, { kind: 'charm' }));
+      flush();
+      await beat();
+    }
     if (seer && game.options(seer.seat, { kind: 'check' }).length > 0) {
       const t = await target(seer.seat, { kind: 'check' });
-      game.record([seer.seat], { kind: 'check', seat: seer.seat, target: t, wolf: game.player(t).role === 'wolf' });
+      game.record([seer.seat], { kind: 'check', seat: seer.seat, target: t, wolf: game.looksWolf(t) });
       flush();
       await beat();
     }
@@ -377,7 +445,7 @@ export async function runGame(d: RunDeps): Promise<Side> {
       await beat();
     }
 
-    game.endNight({ kill, saved, poisoned });
+    game.endNight({ kill, saved, poisoned, guarded });
     flush();
     await beat();
   };
@@ -483,7 +551,7 @@ export async function runGame(d: RunDeps): Promise<Side> {
   flush();
   setPhase('night');
   while (true) {
-    if (game.day > SEATS * 2) throw new Error('The game does not end.');
+    if (game.day > game.players.length * 2) throw new Error('The game does not end.');
     await night();
     if (await settle()) break;
     await day();

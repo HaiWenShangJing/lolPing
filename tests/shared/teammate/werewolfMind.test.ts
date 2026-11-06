@@ -339,6 +339,12 @@ describe('what a mind is told', () => {
     witch: 'and you are the witch, a god.',
     hunter: 'and you are the hunter, a god.',
     idiot: 'and you are the idiot, a god.',
+    guard: 'and you are the guard, a god.',
+    cupid: 'and you are the cupid, on the village side.',
+    thief: 'and you are the thief, on the village side.',
+    wildchild: 'and you are the wild child, on the village side.',
+    beauty: 'and you are the wolf beauty, a wolf.',
+    hidden: 'and you are the hidden wolf, on the wolves\' side.',
   };
 
   it('briefs a seat on the game, its seat, its role and its character, in the language of the table', () => {

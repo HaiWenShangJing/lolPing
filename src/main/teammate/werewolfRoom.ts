@@ -1,10 +1,12 @@
 import { PET_COLORS, PET_IDS, type PetId } from '../../shared/teammate/pet';
-import type { WolfIn, WolfOut, WolfSeat } from '../../shared/gameIpc';
+import type { GameVariant, WolfIn, WolfOut, WolfSeat } from '../../shared/gameIpc';
 import {
   entryLines, fillSeats, lobbyChoices, phrasesOf, roleName, rolesLine, winLine, wolfAnswer, wolfAsk, wolfText,
 } from '../../shared/teammate/gameText';
-import { SEATS, WerewolfGame, type Answer, type Question, type Who } from '../../shared/teammate/werewolf';
-import { makeAi } from '../../shared/teammate/werewolfMind';
+import {
+  CRESCENT_SEATS, SEATS, WerewolfGame, isWolfSide, seatsOf, type Answer, type Mode, type Question, type Who,
+} from '../../shared/teammate/werewolf';
+import { chatPrompt, makeAi, parseChat } from '../../shared/teammate/werewolfMind';
 import { BoomButton, Stopped, runGame, type RunEvent } from '../../shared/teammate/werewolfRun';
 import type { GameBrain } from './gameBrain';
 import type { GameServices } from './gameServices';
@@ -12,6 +14,8 @@ import type { GameServices } from './gameServices';
 /** The pets that sit at the table with a user who plays; a user who only watches has one more. */
 export const WOLF_AI_SEATS = SEATS - 1;
 const USER_COLOR = '#4a90e2';
+/** The most pets that answer one chat message. */
+const CHAT_REPLIES = 3;
 
 interface Run {
   brain: GameBrain | null;
@@ -19,6 +23,12 @@ interface Run {
   stopped: boolean;
   pending: { q: Question; resolve: (a: Answer | null) => void } | null;
   waits: Set<() => void>;
+  done: boolean;
+  whos: Who[];
+  round: number;
+  mode: Mode;
+  /** Answers a message of the chat after the game; set once the game is dealt. */
+  chat: (text: string) => void;
 }
 
 /**
@@ -34,21 +44,37 @@ export class WerewolfRoom {
   lobby(): void {
     this.stop();
     const { g, names } = this.s.words();
+    const w = g.werewolf;
     const seats = Math.min(WOLF_AI_SEATS, PET_IDS.length);
     const watchSeats = Math.min(SEATS, PET_IDS.length);
+    // The crescent table has more seats than there are pets, so pets sit twice and the table is never short.
+    const variants: GameVariant[] = [
+      {
+        id: 'classic', label: w.modeClassic, seats, watchSeats, rules: w.rules,
+        pickPlay: w.pickPlay(seats), pickWatch: w.pickWatch(watchSeats),
+      },
+      {
+        id: 'crescent', label: w.modeCrescent, seats: CRESCENT_SEATS - 1, watchSeats: CRESCENT_SEATS,
+        rules: w.rulesCrescent, pickPlay: w.pickPlay(CRESCENT_SEATS - 1), pickWatch: w.pickWatch(CRESCENT_SEATS),
+      },
+    ];
     this.post({
       kind: 'lobby', text: wolfText(g, seats, watchSeats), choices: lobbyChoices(this.s.petsOn(), names),
-      seats, watchSeats, minds: this.s.canThink(),
+      seats, watchSeats, minds: this.s.canThink(), variants,
     });
   }
 
   on(msg: WolfIn): void {
     switch (msg.t) {
       case 'again':
-        this.lobby();
+        if (this.run?.done && this.run.brain) this.rematch(this.run);
+        else this.lobby();
         return;
       case 'start':
-        if (!this.run) this.begin(msg.pets, msg.play);
+        if (!this.run) this.begin(msg.pets, msg.play, msg.mode ?? 'classic');
+        return;
+      case 'chat':
+        if (this.run?.done) this.run.chat(msg.text);
         return;
       case 'boom':
         this.run?.boom.press();
@@ -75,29 +101,49 @@ export class WerewolfRoom {
     run.brain?.close();
   }
 
-  private begin(picks: readonly PetId[], play: boolean): void {
+  /** The same players sit down again: seats keep their pets, so each pet's session still remembers every game before. */
+  private rematch(prev: Run): void {
+    prev.done = false;
+    this.begin([], false, prev.mode, prev);
+  }
+
+  private begin(picks: readonly PetId[], play: boolean, mode: Mode, prev: Run | null = null): void {
     const { g, names, language } = this.s.words();
     const w = g.werewolf;
     const random = (): number => this.s.random();
-    const pets = fillSeats(picks, play ? SEATS - 1 : SEATS, random);
-    const whos: Who[] = play ? ['user', ...pets] : pets;
-    // Fewer pets than seats can't happen with the pets there are; the lobby stays rather than a short table.
-    if (whos.length !== SEATS) return;
-    const game = WerewolfGame.deal(whos, random);
-    const brain = this.s.brain();
-    const run: Run = { brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set() };
+    const seatCount = seatsOf(mode);
+    let whos: Who[];
+    if (prev) {
+      whos = prev.whos;
+    } else {
+      const pets = fillSeats(picks, play ? seatCount - 1 : seatCount, random);
+      whos = play ? ['user', ...pets] : pets;
+    }
+    if (whos.length !== seatCount) return;
+    const game = WerewolfGame.deal(whos, random, mode);
+    const brain = prev ? prev.brain : this.s.brain();
+    const round = prev ? prev.round + 1 : 1;
+    const run: Run = {
+      brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode,
+      chat: () => undefined,
+    };
     this.run = run;
     brain?.warm();
     const who = (seat: number): Who => game.player(seat).who;
-    const name = (seat: number): string => {
-      const id = who(seat);
-      return id === 'user' ? g.you : names[id];
-    };
+    // A pet that sits twice is told apart by a number: "Haru", "Haru 2".
+    const seen = new Map<string, number>();
+    const labels = game.players.map((p) => {
+      const id = p.who;
+      if (id === 'user') return g.you;
+      const n = (seen.get(id) ?? 0) + 1;
+      seen.set(id, n);
+      return n === 1 ? names[id] : `${names[id]} ${n}`;
+    });
+    const name = (seat: number): string => labels[seat - 1] ?? '';
     // Inside what a pet says, "you" is not a name; inside a prompt, the user is not "You" but a person.
     const spoken = (seat: number): string => (who(seat) === 'user' ? g.youLower : name(seat));
     const called = (seat: number): string => (who(seat) === 'user' ? 'the user' : name(seat));
     const me = game.seatOfUser();
-    const mine = me === null ? null : game.player(me).role === 'wolf';
     let told = false;
 
     const emit = (e: RunEvent): void => {
@@ -107,7 +153,7 @@ export class WerewolfRoom {
           const seats: WolfSeat[] = e.players.map((p) => ({
             seat: p.seat, id: p.who, name: name(p.seat), color: p.who === 'user' ? USER_COLOR : PET_COLORS[p.who],
             alive: p.alive, role: p.role, roleName: roleName(p.role, w), me: p.who === 'user', sheriff: p.sheriff,
-            flipped: p.flipped,
+            flipped: p.flipped, lover: p.lover,
           }));
           const label = w.day(Math.max(1, e.day));
           this.post({ kind: 'state', day: e.day, phase: e.phase, label, seats, boom: e.boom });
@@ -131,7 +177,12 @@ export class WerewolfRoom {
           this.post({ kind: 'ask', ask: null });
           break;
         case 'over': {
-          const win = mine === null ? null : (e.winner === 'wolves') === mine;
+          // A thief or a wild child may have changed sides since the deal, so the side is read now.
+          const win = me === null
+            ? null
+            : e.winner === 'lovers'
+              ? game.partnerOf(me) !== null
+              : (e.winner === 'wolves') === isWolfSide(game.player(me).role);
           const title = win === null ? winLine(e.why, w) : win ? w.youWin : w.youLose;
           this.post({ kind: 'over', win, winner: e.winner, title, text: rolesLine(game, w, name) });
           break;
@@ -139,9 +190,45 @@ export class WerewolfRoom {
       }
     };
 
+    let chatting = false;
+    run.chat = (text: string): void => {
+      if (chatting || run.stopped) return;
+      chatting = true;
+      this.post(me === null
+        ? { kind: 'line', tone: 'sys', seat: null, text: `${g.you}: ${text}` }
+        : { kind: 'line', tone: 'say', seat: me, text });
+      const pool = game.players.filter((p) => p.who !== 'user').map((p) => p.seat);
+      const seated = new Set<string>();
+      const speakers: number[] = [];
+      for (const s of pool.sort(() => random() - 0.5)) {
+        if (speakers.length >= 1 + Math.floor(random() * CHAT_REPLIES) || seated.has(who(s))) continue;
+        seated.add(who(s));
+        speakers.push(s);
+      }
+      const pickOf = (lines: readonly string[]): string =>
+        lines[Math.min(lines.length - 1, Math.floor(random() * lines.length))] ?? '';
+      const reply = async (seat: number): Promise<string | null> => {
+        const id = who(seat);
+        if (id === 'user') return null;
+        if (!brain) return pickOf(w.chatQuips);
+        const raw = await brain.ask(seat, chatPrompt(game, {
+          seat, name: name(seat), persona: this.s.persona(id), names: called, language, user: 'The user', text,
+        }));
+        return parseChat(raw) ?? pickOf(w.chatQuips);
+      };
+      this.post({ kind: 'thinking', seats: speakers });
+      void Promise.all(speakers.map((s) => reply(s).catch(() => pickOf(w.chatQuips)))).then((lines) => {
+        if (run.stopped) return;
+        this.post({ kind: 'thinking', seats: [] });
+        speakers.forEach((s, i) => this.post({ kind: 'line', tone: 'say', seat: s, text: lines[i] ?? '' }));
+      }).finally(() => {
+        chatting = false;
+      });
+    };
+
     const ai = brain
       ? makeAi({
-        game, names: called, language,
+        game, names: called, language, round,
         character: (seat) => {
           const id = who(seat);
           return id === 'user' ? { name: g.you, persona: '' } : { name: names[id], persona: this.s.persona(id) };
@@ -170,9 +257,10 @@ export class WerewolfRoom {
       if (!(err instanceof Stopped) && !run.stopped) {
         const text = String(err instanceof Error ? err.message : err).slice(0, 200);
         this.post({ kind: 'line', tone: 'sys', seat: null, text });
+        run.brain?.close();
       }
     }).finally(() => {
-      run.brain?.close();
+      run.done = true;
     });
   }
 }
