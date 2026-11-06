@@ -173,6 +173,16 @@ describe('the werewolf page: the table', () => {
     expect(labels('#seats .seat .tg').filter((t) => t.startsWith('Role'))).toHaveLength(12);
   });
 
+  it('lets a seer click for a role again in the game after a game that was over', () => {
+    const seer = (n: number): Partial<WolfSeat> => (n === 1 ? { me: true, role: 'seer', roleName: 'Seer' } : {});
+    deliver(state(table(seer), false, 'over'));
+    deliver({ kind: 'over', win: true, winner: 'village', title: 'Over', text: '' });
+    deliver(state(table(seer), false, 'night'));
+    sent.length = 0;
+    (document.querySelectorAll('#seats .seat')[1] as HTMLElement).click();
+    expect(sent).toEqual([{ t: 'peek', seat: 2 }]);
+  });
+
   it('shows the self-destruct button only to a living wolf in the day, and asks twice', () => {
     deliver(state(table((n) => (n === 2 ? { me: true, role: 'wolf', roleName: 'Wolf' } : {})), true));
     const boom = $('#boom');

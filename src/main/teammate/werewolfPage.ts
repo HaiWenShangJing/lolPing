@@ -202,6 +202,7 @@ gameApi.onMsg(m=>{
   }else if(m.kind==='state'){
     $('lobby').hidden=true;$('game').hidden=false;
     seats=m.seats;
+    over=m.phase==='over';
     if(m.phase==='night'||m.phase==='over')speaker=0;
     const me=seats.find(s=>s.me);
     $('day').textContent=m.label;
