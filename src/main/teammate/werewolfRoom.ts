@@ -29,6 +29,8 @@ interface Run {
   mode: Mode;
   /** The role the user asked for, kept for a rematch. */
   wish?: Role;
+  /** The computer players get the god view; kept for a rematch. */
+  god: boolean;
   /** Answers a message of the chat after the game; set once the game is dealt. */
   chat: (text: string) => void;
   /** The seer's cheat: shows the role of a seat from now on. */
@@ -54,8 +56,8 @@ export class WerewolfRoom {
     const seats = Math.min(WOLF_AI_SEATS, PET_IDS.length);
     const watchSeats = Math.min(SEATS, PET_IDS.length);
     // The crescent table has more seats than there are pets, so pets sit twice and the table is never short.
-    const choices = (mode: Mode): Pick<GameVariant, 'roles' | 'rolePick'> => ({
-      rolePick: w.rolePick,
+    const choices = (mode: Mode): Pick<GameVariant, 'roles' | 'rolePick' | 'god'> => ({
+      rolePick: w.rolePick, god: w.godMode,
       roles: [{ id: '', label: w.roleRandom }, ...[...new Set(rolesOf(mode))].map((r) => ({ id: r, label: w.role[r] }))],
     });
     const variants: GameVariant[] = [
@@ -81,7 +83,7 @@ export class WerewolfRoom {
         else this.lobby();
         return;
       case 'start':
-        if (!this.run) this.begin(msg.pets, msg.play, msg.mode ?? 'classic', null, msg.role);
+        if (!this.run) this.begin(msg.pets, msg.play, msg.mode ?? 'classic', null, msg.role, msg.god === true);
         return;
       case 'chat':
         if (this.run?.done) this.run.chat(msg.text);
@@ -120,10 +122,10 @@ export class WerewolfRoom {
   /** The same players sit down again: seats keep their pets, so each pet's session still remembers every game before. */
   private rematch(prev: Run): void {
     prev.done = false;
-    this.begin([], false, prev.mode, prev, prev.wish);
+    this.begin([], false, prev.mode, prev, prev.wish, prev.god);
   }
 
-  private begin(picks: readonly PetId[], play: boolean, mode: Mode, prev: Run | null = null, wish?: Role): void {
+  private begin(picks: readonly PetId[], play: boolean, mode: Mode, prev: Run | null = null, wish?: Role, god = false): void {
     const { g, names, language } = this.s.words();
     const w = g.werewolf;
     const random = (): number => this.s.random();
@@ -140,7 +142,7 @@ export class WerewolfRoom {
     const brain = prev ? prev.brain : this.s.brain();
     const round = prev ? prev.round + 1 : 1;
     const run: Run = {
-      brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode, wish,
+      brain, boom: new BoomButton(), stopped: false, pending: null, waits: new Set(), done: false, whos, round, mode, wish, god,
       chat: () => undefined, peek: () => undefined, grave: () => undefined,
     };
     this.run = run;
@@ -289,7 +291,7 @@ export class WerewolfRoom {
 
     const ai = brain
       ? makeAi({
-        game, names: called, language, round,
+        game, names: called, language, round, god,
         character: (seat) => {
           const id = who(seat);
           return id === 'user' ? { name: g.you, persona: '' } : { name: names[id], persona: this.s.persona(id) };

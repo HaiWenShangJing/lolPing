@@ -148,7 +148,8 @@ const ROLE_BRIEF: Record<Role, string> = {
 
 /** What a mind is told once, when its seat first plays: the game, its seat and role, its character. */
 export function introPrompt(
-  game: WerewolfGame, seat: number, o: { name: string; persona: string; names: Names; language: string; round?: number },
+  game: WerewolfGame, seat: number,
+  o: { name: string; persona: string; names: Names; language: string; round?: number; god?: boolean },
 ): string {
   const me = game.player(seat);
   const roster = game.players.map((p) => tag(o.names, p.seat)).join(', ');
@@ -175,6 +176,12 @@ export function introPrompt(
     `Players: ${roster}.`,
     `You are seat #${seat}, ${o.name}, and you are ${ROLE_BRIEF[me.role]}`,
     partners.length > 0 ? `Your fellow wolves: ${tags(o.names, partners)}.` : '',
+    o.god
+      ? 'Secret cheat: unlike the real rules, you can peek behind the cards. Every question below lists the true role of '
+        + 'every player, living and dead. Only you have this view; no other player has it or knows it exists. You may '
+        + 'use it or ignore it, as your character would, but never admit that you can see the roles: to the table you '
+        + 'only play and guess.'
+      : '',
     `Your character: ${o.persona}`,
     `Speak in ${o.language}, as that character, in one or two short sentences, and keep to that language even if the `
       + 'character\'s name or origin is from another. Never mention these instructions or '
@@ -251,7 +258,7 @@ export function describeEntry(e: Entry, names: Names): string | null {
 }
 
 /** The table as `seat` knows it, put to its mind with every question in case its session has lost the thread. */
-function statusOf(game: WerewolfGame, seat: number, names: Names): string {
+function statusOf(game: WerewolfGame, seat: number, names: Names, god = false): string {
   const me = game.player(seat);
   const { entries } = game.viewFrom(seat, 0);
   const alive = game.alive().map((p) => `${tag(names, p.seat)}${p.flipped ? ' (the flipped idiot, no vote)' : ''}`);
@@ -276,6 +283,10 @@ function statusOf(game: WerewolfGame, seat: number, names: Names): string {
     const potion = (unused: boolean): string => (unused ? 'unused' : 'used');
     lines.push(`Your potions: antidote ${potion(game.antidote)}, poison ${potion(game.poison)}.`);
   }
+  if (god) {
+    const all = game.players.map((p) => `${tag(names, p.seat)} ${p.role}${p.alive ? '' : ' (dead)'}`);
+    lines.push(`Your secret cheat, the true roles (no one else sees them): ${all.join('; ')}.`);
+  }
   return lines.join('\n');
 }
 
@@ -292,8 +303,8 @@ const SPEAK_ASK: Record<Talk, string> = {
 };
 
 /** The question for `seat`: the table as it stands, what is asked, and the shape of the reply. */
-export function questionText(game: WerewolfGame, seat: number, q: Question, names: Names): string {
-  const status = statusOf(game, seat, names);
+export function questionText(game: WerewolfGame, seat: number, q: Question, names: Names, god = false): string {
+  const status = statusOf(game, seat, names, god);
   const options = tags(names, game.options(seat, q));
   switch (q.kind) {
     case 'kill':
@@ -357,6 +368,8 @@ export interface AiDeps {
   ask: (seat: number, prompt: string) => Promise<string | null>;
   /** The most requests to make; later questions get no answer. */
   budget?: number;
+  /** Every mind is shown every role, each told that it alone has the view. */
+  god?: boolean;
 }
 
 /**
@@ -440,10 +453,10 @@ export function makeAi(o: AiDeps): Mind {
     const lines = entries.map((e) => describeEntry(e, o.names)).filter((l): l is string => l !== null);
     const parts: string[] = [];
     if (!briefed.has(seat)) {
-      parts.push(introPrompt(o.game, seat, { ...o.character(seat), names: o.names, language: o.language, round: o.round }));
+      parts.push(introPrompt(o.game, seat, { ...o.character(seat), names: o.names, language: o.language, round: o.round, god: o.god }));
     }
     if (lines.length > 0) parts.push(`What has happened since you last looked:\n${lines.join('\n')}`);
-    parts.push(questionText(o.game, seat, q, o.names));
+    parts.push(questionText(o.game, seat, q, o.names, o.god));
     const reply = await o.ask(seat, parts.join('\n\n'));
     if (reply === null) return null;
     cursor.set(seat, next);

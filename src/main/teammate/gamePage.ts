@@ -42,6 +42,7 @@ input:focus{border-color:var(--accent)}
 #lGrid label.off{opacity:.45;cursor:default}
 #lGrid input{display:none}
 #lStart{align-self:flex-start;height:34px;padding:0 22px}
+#lGod{display:flex;align-items:center;gap:8px;cursor:pointer}
 `;
 
 const LOBBY = `<div id="lobby" hidden>
@@ -52,6 +53,7 @@ const LOBBY = `<div id="lobby" hidden>
   <div id="lSize" hidden></div>
   <p id="lRoleT" hidden></p>
   <div id="lRole" hidden></div>
+  <label id="lGod" hidden><input type="checkbox" id="lGodBox"><span></span></label>
   <p id="lPick"></p>
   <div id="lGrid"></div>
   <p id="lMinds" class="dim"></p>
@@ -93,6 +95,8 @@ function showLobby(m,rest){
     modes.forEach(r=>{r.parentElement.className=(r.value==='play')===play?'on':''});
     sizes.forEach(r=>{r.parentElement.className=Number(r.value)===size?'on':''});
     const pickRole=!!(play&&v&&v.roles);
+    $('lGod').hidden=!(v&&v.god);
+    if(v&&v.god)$('lGod').lastChild.textContent=v.god;
     $('lRoleT').hidden=$('lRole').hidden=!pickRole;
     if(pickRole){
       if(!v.roles.some(x=>x.id===role))role='';
@@ -142,7 +146,8 @@ function showLobby(m,rest){
   fresh();
   $('lStart').onclick=()=>{
     const pets=boxes.filter(b=>b.checked).map(b=>b.value);
-    send(m.sizes?{t:'start',pets,size}:v?(play&&role?{t:'start',pets,play,mode:v.id,role}:{t:'start',pets,play,mode:v.id}):{t:'start',pets,play});
+    const god=!!(v&&v.god&&$('lGodBox').checked);
+    send(m.sizes?{t:'start',pets,size}:v?{t:'start',pets,play,mode:v.id,...(play&&role?{role}:{}),...(god?{god}:{})}:{t:'start',pets,play});
   };
 }
 `;

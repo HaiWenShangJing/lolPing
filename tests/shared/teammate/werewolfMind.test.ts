@@ -407,6 +407,17 @@ describe('what a mind is told', () => {
     expect(questionText(g, 5, { kind: 'run' }, names)).toContain('There is no sheriff.');
   });
 
+  it('shows every true role only in god view, and tells the mind it alone sees them', () => {
+    const g = night();
+    expect(questionText(g, 5, { kind: 'run' }, names)).not.toContain('true roles');
+    expect(introPrompt(g, 5, { name: 'Pet5', persona: 'p', names, language: 'English' })).not.toContain('Secret cheat');
+    const q = questionText(g, 5, { kind: 'run' }, names, true);
+    expect(q).toContain('true roles (no one else sees them)');
+    expect(q).toContain(`#1 Pet1 ${g.player(1).role}`);
+    expect(introPrompt(g, 5, { name: 'Pet5', persona: 'p', names, language: 'English', god: true }))
+      .toContain('Only you have this view');
+  });
+
   it('tells only the witch what is left of her potions', () => {
     const g = night();
     expect(questionText(g, 10, g.witchQuestion(6), names)).toContain('Your potions: antidote unused, poison unused.');

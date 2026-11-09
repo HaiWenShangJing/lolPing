@@ -62,6 +62,8 @@ export interface GameVariant {
   /** The roles the user may ask for when playing (the first, with an empty id, is a random one), with the words for the choice. */
   roles?: { id: string; label: string }[];
   rolePick?: string;
+  /** The words for a switch that gives every computer player a god's view of the roles, without telling it so. */
+  god?: string;
 }
 
 /** One seat at the werewolf table. `role` is null while the user may not know it. */
@@ -109,7 +111,7 @@ export type WolfOut =
 
 export type WolfIn =
   /** `play`: the user takes a seat; false to only watch, with every seat played by a pet. */
-  | { t: 'start'; pets: PetId[]; play: boolean; mode?: Mode; role?: Role }
+  | { t: 'start'; pets: PetId[]; play: boolean;   mode?: Mode; role?: Role; god?: boolean }
   | { t: 'target'; seat: number }
   | { t: 'card'; index: 0 | 1 }
   | { t: 'pair'; seats: [number, number] }
@@ -288,6 +290,7 @@ export function parseWolfIn(raw: unknown, table: number = SEATS): WolfIn | null 
       const out: WolfIn = { t: 'start', pets, play };
       if (mode !== undefined) out.mode = mode;
       if (role !== undefined) out.role = role;
+      if (r.god === true) out.god = true;
       return out;
     }
     case 'card': return r.index === 0 || r.index === 1 ? { t: 'card', index: r.index } : null;
